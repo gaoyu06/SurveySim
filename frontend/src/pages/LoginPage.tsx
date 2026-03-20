@@ -1,7 +1,7 @@
 import { LockOutlined, MailOutlined } from "@ant-design/icons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { App, Button, Card, Col, Form, Input, Row, Tabs, Typography } from "antd";
-import { useForm } from "react-hook-form";
+import { Controller, useForm, type UseFormReturn } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import {
   loginInputSchema,
@@ -10,8 +10,10 @@ import {
   type LoginInput,
   type RegisterInput,
 } from "@formagents/shared";
-import { apiClient } from "@/api/client";
+import { ApiError, apiClient } from "@/api/client";
 import { authStore } from "@/stores/auth.store";
+
+type AuthFormValues = LoginInput | RegisterInput;
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -27,11 +29,70 @@ export function LoginPage() {
     defaultValues: { email: "", password: "" },
   });
 
-  const submit = async (mode: "login" | "register", values: LoginInput | RegisterInput) => {
-    const result = await apiClient.post<AuthResponse>(`/auth/${mode}`, values);
-    setSession(result.token, result.user);
-    message.success(mode === "login" ? "Welcome back" : "Account created");
-    navigate("/");
+  const submit = async (mode: "login" | "register", values: AuthFormValues) => {
+    try {
+      const result = await apiClient.post<AuthResponse>(`/auth/${mode}`, values);
+      setSession(result.token, result.user);
+      message.success(mode === "login" ? "Welcome back" : "Account created");
+      navigate("/");
+    } catch (error) {
+      const errorMessage =
+        error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Request failed";
+      message.error(errorMessage);
+    }
+  };
+
+  const renderAuthForm = (mode: "login" | "register", form: UseFormReturn<AuthFormValues>) => {
+    return (
+      <form onSubmit={form.handleSubmit((values) => submit(mode, values))} noValidate>
+        <Form layout="vertical" component={false}>
+          <Form.Item
+            label="Email"
+            validateStatus={form.formState.errors.email ? "error" : ""}
+            help={form.formState.errors.email?.message}
+          >
+            <Controller
+              name="email"
+              control={form.control}
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  value={field.value ?? ""}
+                  autoComplete="email"
+                  prefix={<MailOutlined />}
+                />
+              )}
+            />
+          </Form.Item>
+          <Form.Item
+            label="Password"
+            validateStatus={form.formState.errors.password ? "error" : ""}
+            help={form.formState.errors.password?.message ?? "Use at least 8 characters"}
+          >
+            <Controller
+              name="password"
+              control={form.control}
+              render={({ field }) => (
+                <Input.Password
+                  {...field}
+                  value={field.value ?? ""}
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  prefix={<LockOutlined />}
+                />
+              )}
+            />
+          </Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            block
+            loading={form.formState.isSubmitting}
+          >
+            {mode === "login" ? "Login" : "Create account"}
+          </Button>
+        </Form>
+      </form>
+    );
   };
 
   return (
@@ -68,74 +129,12 @@ export function LoginPage() {
                 {
                   key: "login",
                   label: "Login",
-                  children: (
-                    <Form
-                      layout="vertical"
-                      onFinish={loginForm.handleSubmit((values) => submit("login", values))}
-                    >
-                      <Form.Item
-                        label="Email"
-                        validateStatus={loginForm.formState.errors.email ? "error" : ""}
-                        help={loginForm.formState.errors.email?.message}
-                      >
-                        <Input prefix={<MailOutlined />} {...loginForm.register("email")} />
-                      </Form.Item>
-                      <Form.Item
-                        label="Password"
-                        validateStatus={loginForm.formState.errors.password ? "error" : ""}
-                        help={loginForm.formState.errors.password?.message}
-                      >
-                        <Input.Password
-                          prefix={<LockOutlined />}
-                          {...loginForm.register("password")}
-                        />
-                      </Form.Item>
-                      <Button
-                        type="primary"
-                        htmlType="submit"
-                        block
-                        loading={loginForm.formState.isSubmitting}
-                      >
-                        Login
-                      </Button>
-                    </Form>
-                  ),
+                  children: renderAuthForm("login", loginForm as UseFormReturn<AuthFormValues>),
                 },
                 {
                   key: "register",
                   label: "Register",
-                  children: (
-                    <Form
-                      layout="vertical"
-                      onFinish={registerForm.handleSubmit((values) => submit("register", values))}
-                    >
-                      <Form.Item
-                        label="Email"
-                        validateStatus={registerForm.formState.errors.email ? "error" : ""}
-                        help={registerForm.formState.errors.email?.message}
-                      >
-                        <Input prefix={<MailOutlined />} {...registerForm.register("email")} />
-                      </Form.Item>
-                      <Form.Item
-                        label="Password"
-                        validateStatus={registerForm.formState.errors.password ? "error" : ""}
-                        help={registerForm.formState.errors.password?.message}
-                      >
-                        <Input.Password
-                          prefix={<LockOutlined />}
-                          {...registerForm.register("password")}
-                        />
-                      </Form.Item>
-                      <Button
-                        type="primary"
-                        htmlType="submit"
-                        block
-                        loading={registerForm.formState.isSubmitting}
-                      >
-                        Create account
-                      </Button>
-                    </Form>
-                  ),
+                  children: renderAuthForm("register", registerForm as UseFormReturn<AuthFormValues>),
                 },
               ]}
             />

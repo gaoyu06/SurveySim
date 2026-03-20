@@ -39,7 +39,11 @@ export function surveyControllerFactory(service: SurveyService) {
               path: filePath,
             },
           });
-          body = { rawText: buffer.toString("utf-8"), title: file.filename };
+          body = {
+            rawText: buffer.toString("utf-8"),
+            title: file.filename,
+            llmConfigId: file.fields.llmConfigId && "value" in file.fields.llmConfigId ? String(file.fields.llmConfigId.value) : undefined,
+          };
         }
         reply.send(await service.importDraft(request.authUser!.id, body));
       } catch (error) {

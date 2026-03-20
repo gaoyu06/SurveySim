@@ -1,6 +1,6 @@
 import { DownloadOutlined } from "@ant-design/icons";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { App, Button, Empty, Form, Select, Space, Table, Typography } from "antd";
+import { App, Button, Empty, Form, Input, Select, Space, Table, Tag, Typography } from "antd";
 import { useMemo, useState } from "react";
 import type { MockRunDto, ReportDto } from "@formagents/shared";
 import { apiClient } from "@/api/client";
@@ -22,22 +22,89 @@ async function download(path: string, filename: string) {
   window.URL.revokeObjectURL(url);
 }
 
+const attributeOptions = ["country", "gender", "ageRange", "incomeRange", "interests", "educationLevel"];
+
+function buildChoiceCrossOption(report: ReportDto) {
+  const question = report.questions.find((item) => item.groupedSingleChoice || item.groupedMultiChoice);
+  if (!question) return null;
+
+  const grouped = question.groupedSingleChoice ?? question.groupedMultiChoice;
+  if (!grouped) return null;
+
+  const optionEntries = Object.entries(grouped);
+  const groupLabels = report.groups.map((group) => group.label);
+  const optionLabelMap = new Map(
+    [...(question.singleChoice ?? []), ...(question.multiChoice ?? [])].map((item, index) => [
+      Object.keys(grouped)[index],
+      item.label,
+    ]),
+  );
+
+  return {
+    tooltip: { trigger: "axis" },
+    legend: { bottom: 0, textStyle: { color: "#f4ede1" } },
+    xAxis: {
+      type: "category",
+      data: groupLabels,
+      axisLabel: { color: "#f4ede1" },
+    },
+    yAxis: { type: "value", axisLabel: { color: "#f4ede1" } },
+    series: optionEntries.map(([optionId, items]) => ({
+      type: "bar",
+      name: optionLabelMap.get(optionId) ?? optionId,
+      data: items.map((item) => item.percentage),
+    })),
+  };
+}
+
+function buildRatingCrossOption(report: ReportDto) {
+  const question = report.questions.find((item) => item.groupedRating?.length);
+  if (!question?.groupedRating?.length) return null;
+
+  return {
+    tooltip: { trigger: "axis" },
+    xAxis: {
+      type: "category",
+      data: question.groupedRating.map((item) => item.groupLabel),
+      axisLabel: { color: "#f4ede1" },
+    },
+    yAxis: { type: "value", axisLabel: { color: "#f4ede1" } },
+    series: [
+      {
+        type: "line",
+        smooth: true,
+        data: question.groupedRating.map((item) => item.mean),
+        lineStyle: { color: "#8da0ff", width: 3 },
+        itemStyle: { color: "#d7b98f" },
+      },
+    ],
+  };
+}
+
 export function ReportsPage() {
   const { message } = App.useApp();
   const [runId, setRunId] = useState<string>();
   const [groupBy, setGroupBy] = useState<string>();
+  const [filterAttribute, setFilterAttribute] = useState<string>();
+  const [filterValue, setFilterValue] = useState("");
+
   const runsQuery = useQuery({
     queryKey: ["mock-runs"],
     queryFn: () => apiClient.get<MockRunDto[]>("/mock-runs"),
   });
 
   const reportMutation = useMutation({
-    mutationFn: () => apiClient.post<ReportDto>(`/reports/${runId}`, { groupBy, attributes: {} }),
+    mutationFn: () =>
+      apiClient.post<ReportDto>(`/reports/${runId}`, {
+        groupBy,
+        attributes: filterAttribute && filterValue.trim() ? { [filterAttribute]: filterValue.split(",").map((item) => item.trim()).filter(Boolean) } : {},
+      }),
     onError: (error: Error) => message.error(error.message),
   });
 
   const currentReport = reportMutation.data;
   const firstChoiceQuestion = currentReport?.questions.find((question) => question.singleChoice || question.multiChoice);
+
   const choiceOption = useMemo(() => {
     if (!firstChoiceQuestion) return null;
     const items = firstChoiceQuestion.singleChoice ?? firstChoiceQuestion.multiChoice ?? [];
@@ -76,11 +143,14 @@ export function ReportsPage() {
     };
   }, [ratingQuestion]);
 
+  const choiceCrossOption = useMemo(() => (currentReport ? buildChoiceCrossOption(currentReport) : null), [currentReport]);
+  const ratingCrossOption = useMemo(() => (currentReport ? buildRatingCrossOption(currentReport) : null), [currentReport]);
+
   return (
     <>
       <PageHeader
         title="Reports & exports"
-        subtitle="Generate base statistics, run grouped cuts by participant attributes, and export raw answers or printable summaries."
+        subtitle="Generate base statistics, filter by respondent attributes, and compare answer distributions across groups."
       />
       <div className="workspace-grid">
         <Panel>
@@ -97,12 +167,25 @@ export function ReportsPage() {
               <Select
                 allowClear
                 placeholder="Optional grouping"
-                options={["country", "gender", "ageRange", "incomeRange", "interests", "educationLevel"].map((value) => ({
-                  label: value,
-                  value,
-                }))}
+                options={attributeOptions.map((value) => ({ label: value, value }))}
                 value={groupBy}
                 onChange={setGroupBy}
+              />
+            </Form.Item>
+            <Form.Item label="Filter attribute">
+              <Select
+                allowClear
+                placeholder="Optional filter field"
+                options={attributeOptions.map((value) => ({ label: value, value }))}
+                value={filterAttribute}
+                onChange={setFilterAttribute}
+              />
+            </Form.Item>
+            <Form.Item label="Filter value">
+              <Input
+                placeholder="Single value or comma separated values"
+                value={filterValue}
+                onChange={(event) => setFilterValue(event.target.value)}
               />
             </Form.Item>
             <Space wrap>
@@ -127,11 +210,31 @@ export function ReportsPage() {
             <Panel>
               <Typography.Title level={4}>Summary</Typography.Title>
               <Typography.Paragraph>Total responses: {currentReport.totalResponses}</Typography.Paragraph>
+              {currentReport.groupedBy ? (
+                <Space wrap style={{ marginBottom: 12 }}>
+                  <Typography.Text>Grouped by:</Typography.Text>
+                  <Tag color="gold">{currentReport.groupedBy}</Tag>
+                  {currentReport.groups.map((group) => (
+                    <Tag key={group.key}>{`${group.label}: ${group.count}`}</Tag>
+                  ))}
+                </Space>
+              ) : null}
               {choiceOption ? <SimpleChart option={choiceOption} /> : <Empty description="No choice chart available" />}
             </Panel>
             <Panel>
               <Typography.Title level={4}>Rating trend</Typography.Title>
               {ratingOption ? <SimpleChart option={ratingOption} /> : <Empty description="No rating data available" />}
+            </Panel>
+            <Panel>
+              <Typography.Title level={4}>Cross analysis</Typography.Title>
+              {currentReport.groupedBy ? (
+                <div className="card-stack">
+                  {choiceCrossOption ? <SimpleChart option={choiceCrossOption} /> : <Empty description="No grouped choice comparison available" />}
+                  {ratingCrossOption ? <SimpleChart option={ratingCrossOption} /> : <Empty description="No grouped rating comparison available" />}
+                </div>
+              ) : (
+                <Empty description="Choose a group-by field to view cross analysis" />
+              )}
             </Panel>
             <Panel>
               <Typography.Title level={4}>Question table</Typography.Title>
@@ -152,6 +255,21 @@ export function ReportsPage() {
                           : item.multiChoice?.[0]
                             ? `${item.multiChoice[0].label}: ${item.multiChoice[0].count}`
                             : `${item.openText?.answers.length ?? 0} open answers`,
+                  },
+                  {
+                    title: "Grouped insight",
+                    render: (_, item) => {
+                      if (item.groupedRating?.length) {
+                        return item.groupedRating.map((group: { groupLabel: string; mean: number }) => `${group.groupLabel}: ${group.mean}`).join(" | ");
+                      }
+                      if (item.groupedOpenText?.length) {
+                        return item.groupedOpenText.map((group: { groupLabel: string; count: number }) => `${group.groupLabel}: ${group.count}`).join(" | ");
+                      }
+                      if (item.groupedSingleChoice || item.groupedMultiChoice) {
+                        return "Grouped distribution available";
+                      }
+                      return "-";
+                    },
                   },
                 ]}
               />

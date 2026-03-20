@@ -5,6 +5,29 @@ export const reportFilterSchema = z.object({
   groupBy: z.string().optional(),
 });
 
+export const groupedChoiceMetricSchema = z.object({
+  groupKey: z.string(),
+  groupLabel: z.string(),
+  count: z.number().int(),
+  percentage: z.number(),
+});
+
+export const groupedRatingMetricSchema = z.object({
+  groupKey: z.string(),
+  groupLabel: z.string(),
+  mean: z.number(),
+  median: z.number(),
+  stdDev: z.number(),
+  count: z.number().int(),
+});
+
+export const groupedOpenTextMetricSchema = z.object({
+  groupKey: z.string(),
+  groupLabel: z.string(),
+  count: z.number().int(),
+  sampleAnswers: z.array(z.string()).default([]),
+});
+
 export const questionReportSchema = z.object({
   questionId: z.string(),
   title: z.string(),
@@ -13,6 +36,10 @@ export const questionReportSchema = z.object({
   multiChoice: z.array(z.object({ label: z.string(), count: z.number().int(), percentage: z.number() })).optional(),
   rating: z.object({ mean: z.number(), median: z.number(), stdDev: z.number(), distribution: z.array(z.object({ label: z.string(), count: z.number().int() })) }).optional(),
   openText: z.object({ answers: z.array(z.string()), summary: z.string().optional(), keywords: z.array(z.string()).default([]) }).optional(),
+  groupedSingleChoice: z.record(z.string(), z.array(groupedChoiceMetricSchema)).optional(),
+  groupedMultiChoice: z.record(z.string(), z.array(groupedChoiceMetricSchema)).optional(),
+  groupedRating: z.array(groupedRatingMetricSchema).optional(),
+  groupedOpenText: z.array(groupedOpenTextMetricSchema).optional(),
 });
 
 export const reportSchema = z.object({

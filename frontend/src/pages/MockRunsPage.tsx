@@ -3,7 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Form, Input, InputNumber, Select, Space, Switch, Table } from "antd";
 import { useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import {
   mockRunCreateInputSchema,
   type LlmProviderConfigDto,
@@ -74,6 +74,14 @@ export function MockRunsPage() {
     queryClient.invalidateQueries({ queryKey: ["mock-runs"] });
   };
 
+  const submit = async (values: MockRunCreateInput) => {
+    try {
+      await createMutation.mutateAsync(values);
+    } catch {
+      // handled by mutation
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -82,55 +90,107 @@ export function MockRunsPage() {
       />
       <div className="workspace-grid">
         <Panel>
-          <Form layout="vertical" onFinish={form.handleSubmit((values) => createMutation.mutate(values))}>
-            <Form.Item label="Run name">
-              <Input {...form.register("name")} />
-            </Form.Item>
-            <Form.Item label="Participant template">
-              <Select
-                options={(templatesQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
-                value={form.watch("participantTemplateId")}
-                onChange={(value) => form.setValue("participantTemplateId", value)}
+          <form onSubmit={form.handleSubmit(submit)} noValidate>
+            <Form layout="vertical" component={false}>
+            <Form.Item label="Run name" validateStatus={form.formState.errors.name ? "error" : ""} help={form.formState.errors.name?.message}>
+              <Controller
+                name="name"
+                control={form.control}
+                render={({ field }) => <Input {...field} value={field.value ?? ""} />}
               />
             </Form.Item>
-            <Form.Item label="Survey">
-              <Select
-                options={(surveysQuery.data ?? []).map((item) => ({ label: item.title, value: item.id }))}
-                value={form.watch("surveyId")}
-                onChange={(value) => form.setValue("surveyId", value)}
+            <Form.Item label="Participant template" validateStatus={form.formState.errors.participantTemplateId ? "error" : ""} help={form.formState.errors.participantTemplateId?.message}>
+              <Controller
+                name="participantTemplateId"
+                control={form.control}
+                render={({ field }) => (
+                  <Select
+                    options={(templatesQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
+                    value={field.value}
+                    onChange={field.onChange}
+                  />
+                )}
               />
             </Form.Item>
-            <Form.Item label="LLM config">
-              <Select
-                options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
-                value={form.watch("llmConfigId")}
-                onChange={(value) => form.setValue("llmConfigId", value)}
+            <Form.Item label="Survey" validateStatus={form.formState.errors.surveyId ? "error" : ""} help={form.formState.errors.surveyId?.message}>
+              <Controller
+                name="surveyId"
+                control={form.control}
+                render={({ field }) => (
+                  <Select
+                    options={(surveysQuery.data ?? []).map((item) => ({ label: item.title, value: item.id }))}
+                    value={field.value}
+                    onChange={field.onChange}
+                  />
+                )}
+              />
+            </Form.Item>
+            <Form.Item label="LLM config" validateStatus={form.formState.errors.llmConfigId ? "error" : ""} help={form.formState.errors.llmConfigId?.message}>
+              <Controller
+                name="llmConfigId"
+                control={form.control}
+                render={({ field }) => (
+                  <Select
+                    options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
+                    value={field.value}
+                    onChange={field.onChange}
+                  />
+                )}
               />
             </Form.Item>
             <Space wrap>
-              <Form.Item label="Participants">
-                <InputNumber min={1} max={1000} value={form.watch("participantCount")} onChange={(value) => form.setValue("participantCount", value ?? 24)} />
+              <Form.Item label="Participants" validateStatus={form.formState.errors.participantCount ? "error" : ""} help={form.formState.errors.participantCount?.message}>
+                <Controller
+                  name="participantCount"
+                  control={form.control}
+                  render={({ field }) => (
+                    <InputNumber min={1} max={1000} value={field.value} onChange={(value) => field.onChange(value ?? 24)} />
+                  )}
+                />
               </Form.Item>
-              <Form.Item label="Concurrency">
-                <InputNumber min={1} max={32} value={form.watch("concurrency")} onChange={(value) => form.setValue("concurrency", value ?? 4)} />
+              <Form.Item label="Concurrency" validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
+                <Controller
+                  name="concurrency"
+                  control={form.control}
+                  render={({ field }) => (
+                    <InputNumber min={1} max={32} value={field.value} onChange={(value) => field.onChange(value ?? 4)} />
+                  )}
+                />
               </Form.Item>
               <Form.Item label="Reuse identity">
-                <Switch checked={form.watch("reuseIdentity")} onChange={(checked) => form.setValue("reuseIdentity", checked)} />
+                <Controller
+                  name="reuseIdentity"
+                  control={form.control}
+                  render={({ field }) => <Switch checked={Boolean(field.value)} onChange={field.onChange} />}
+                />
               </Form.Item>
               <Form.Item label="Reuse persona prompt">
-                <Switch checked={form.watch("reusePersonaPrompt")} onChange={(checked) => form.setValue("reusePersonaPrompt", checked)} />
+                <Controller
+                  name="reusePersonaPrompt"
+                  control={form.control}
+                  render={({ field }) => <Switch checked={Boolean(field.value)} onChange={field.onChange} />}
+                />
               </Form.Item>
             </Space>
             <Form.Item label="Extra system prompt">
-              <Input.TextArea rows={3} {...form.register("extraSystemPrompt")} />
+              <Controller
+                name="extraSystemPrompt"
+                control={form.control}
+                render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />}
+              />
             </Form.Item>
             <Form.Item label="Extra respondent prompt">
-              <Input.TextArea rows={3} {...form.register("extraRespondentPrompt")} />
+              <Controller
+                name="extraRespondentPrompt"
+                control={form.control}
+                render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />}
+              />
             </Form.Item>
             <Button type="primary" htmlType="submit" loading={createMutation.isPending}>
               Create run
             </Button>
-          </Form>
+            </Form>
+          </form>
         </Panel>
 
         <Panel>

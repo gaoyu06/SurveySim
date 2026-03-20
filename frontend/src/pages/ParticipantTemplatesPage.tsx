@@ -1,4 +1,4 @@
-import { CopyOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
+import { CopyOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Empty, Form, Input, InputNumber, List, Select, Space, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
@@ -105,6 +105,17 @@ export function ParticipantTemplatesPage() {
     onError: (error: Error) => message.error(error.message),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/participant-templates/${id}`),
+    onSuccess: () => {
+      message.success("Template deleted");
+      setSelectedId(null);
+      setDraft(defaultDraft);
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+    },
+    onError: (error: Error) => message.error(error.message),
+  });
+
   const previewOptions = useMemo(() => {
     const distributions = previewQuery.data?.attributeDistributions ?? {};
     const firstEntry = Object.entries(distributions)[0];
@@ -179,6 +190,15 @@ export function ParticipantTemplatesPage() {
               }}
             >
               Clone
+            </Button>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              disabled={!selectedId}
+              loading={deleteMutation.isPending}
+              onClick={() => selectedId && deleteMutation.mutate(selectedId)}
+            >
+              Delete
             </Button>
             <Button type="primary" icon={<SaveOutlined />} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
               Save

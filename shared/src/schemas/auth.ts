@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+const emailInputSchema = z
+  .string()
+  .trim()
+  .min(1, "Email is required")
+  .email("Please enter a valid email address");
+
+const passwordInputSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .max(128, "Password is too long");
+
 export const userSchema = z.object({
   id: z.string(),
   email: z.string().email(),
@@ -8,8 +19,8 @@ export const userSchema = z.object({
 });
 
 export const registerInputSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8).max(128),
+  email: emailInputSchema,
+  password: passwordInputSchema,
 });
 
 export const loginInputSchema = registerInputSchema;

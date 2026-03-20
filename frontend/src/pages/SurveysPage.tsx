@@ -125,12 +125,16 @@ export function SurveysPage() {
                 beforeUpload={(file) => {
                   const formData = new FormData();
                   formData.append("file", file);
+                  if (selectedLlmConfigId) {
+                    formData.append("llmConfigId", selectedLlmConfigId);
+                  }
                   apiClient
                     .upload<SurveyDraft>("/surveys/import", formData)
                     .then((result) => {
                       setDraft(result);
                       setEditingSurveyId(null);
                       setDrawerOpen(true);
+                      message.success("Survey file imported successfully");
                     })
                     .catch((error) => message.error(error.message));
                   return false;
