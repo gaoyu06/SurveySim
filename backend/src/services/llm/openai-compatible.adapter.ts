@@ -25,6 +25,14 @@ interface ChatCompletionResponse {
   }>;
 }
 
+interface StreamChunkResponse {
+  choices?: Array<{
+    delta?: {
+      content?: string | Array<{ type?: string; text?: string }>;
+    };
+  }>;
+}
+
 function normalizeBaseUrl(baseUrl: string) {
   if (baseUrl.endsWith("/chat/completions")) {
     return baseUrl;
@@ -125,6 +133,38 @@ export class OpenAiCompatibleAdapter {
     throw new Error(`Unable to parse LLM JSON response: ${parsed.error}`);
   }
 
+  async chatJsonWithEvents<T>(
+    config: LlmRuntimeConfig,
+    messages: ChatMessage[],
+    fixerPrompt: string | undefined,
+    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => void,
+  ): Promise<T> {
+    const raw = await this.chatTextStream(config, messages, onEvent);
+    const parsed = this.tryParse<T>(raw);
+    if (parsed.ok) {
+      return parsed.value;
+    }
+
+    onEvent?.({ type: "status", message: "Attempting one JSON repair pass" });
+
+    if (fixerPrompt) {
+      const repaired = await this.chatText(
+        config,
+        [
+          { role: "system", content: "You repair invalid JSON. Return valid JSON only." },
+          { role: "user", content: `${fixerPrompt}\n\nInvalid JSON:\n${raw}` },
+        ],
+        { temperature: 0.1 },
+      );
+      const retried = this.tryParse<T>(repaired);
+      if (retried.ok) {
+        return retried.value;
+      }
+    }
+
+    throw new Error(`Unable to parse LLM JSON response: ${parsed.error}`);
+  }
+
   async testConnection(config: Pick<LlmRuntimeConfig, "baseUrl" | "apiKey" | "model" | "timeoutMs">) {
     const text = await this.chatText(
       {
@@ -141,6 +181,92 @@ export class OpenAiCompatibleAdapter {
     );
 
     return this.tryParse<{ ok: boolean; message?: string }>(text).ok;
+  }
+
+  private async chatTextStream(
+    config: LlmRuntimeConfig,
+    messages: ChatMessage[],
+    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => void,
+  ) {
+    const attempts = Math.max(1, (config.retryCount ?? 0) + 1);
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(new Error("Timeout")), config.timeoutMs);
+
+      try {
+        const response = await fetch(normalizeBaseUrl(config.baseUrl), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: config.model,
+            messages,
+            temperature: config.temperature,
+            max_tokens: config.maxTokens,
+            stream: true,
+          }),
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error(`Streaming request failed with status ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let output = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const events = buffer.split("\n\n");
+          buffer = events.pop() ?? "";
+
+          for (const eventBlock of events) {
+            const lines = eventBlock
+              .split("\n")
+              .map((line) => line.trim())
+              .filter(Boolean);
+
+            for (const line of lines) {
+              if (!line.startsWith("data:")) continue;
+              const data = line.slice(5).trim();
+              if (!data || data === "[DONE]") continue;
+              const payload = JSON.parse(data) as StreamChunkResponse;
+              const text = extractTextContent(payload.choices?.[0]?.delta?.content);
+              if (!text) continue;
+              output += text;
+              onEvent?.({ type: "delta", chunk: text });
+            }
+          }
+        }
+
+        if (!output.trim()) {
+          throw new Error("LLM returned empty streamed content");
+        }
+
+        return output;
+      } catch (error) {
+        lastError = error;
+        if (attempt >= attempts) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(`LLM request failed after ${attempts} attempt(s): ${message}`);
+        }
+        onEvent?.({ type: "status", message: `Streaming attempt ${attempt} failed, retrying` });
+        await wait(Math.min(3000, 400 * attempt));
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    throw new Error(lastError instanceof Error ? lastError.message : String(lastError));
   }
 
   private tryParse<T>(value: string): { ok: true; value: T } | { ok: false; error: string } {

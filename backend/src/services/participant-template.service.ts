@@ -29,6 +29,15 @@ function mapTemplate(template: Awaited<ReturnType<typeof participantTemplateRepo
 export class ParticipantTemplateService {
   private readonly ruleEngine = new RuleEngineService();
 
+  private parseTemplatePayload(input: unknown) {
+    const payload = input as { template?: unknown; rules?: unknown[] };
+    const templateSource = payload?.template ?? input;
+    const rulesSource = payload?.rules ?? [];
+    const template = participantTemplateInputSchema.parse(templateSource);
+    const rules = rulesSource.map((rule) => participantRuleInputSchema.parse(rule));
+    return { template, rules };
+  }
+
   async list(userId: string) {
     const templates = await participantTemplateRepository.list(userId);
     return templates.map((template) => mapTemplate(template));
@@ -41,19 +50,15 @@ export class ParticipantTemplateService {
   }
 
   async create(userId: string, input: unknown) {
-    const payload = input as { template: unknown; rules: unknown[] };
-    const template = participantTemplateInputSchema.parse(payload.template);
-    const rules = (payload.rules ?? []).map((rule) => participantRuleInputSchema.parse(rule));
+    const { template, rules } = this.parseTemplatePayload(input);
     const created = await participantTemplateRepository.create(userId, template, rules);
     return mapTemplate(created);
   }
 
   async update(userId: string, id: string, input: unknown) {
-    const payload = input as { template: unknown; rules: unknown[] };
     const existing = await participantTemplateRepository.getById(userId, id);
     if (!existing) throw new Error("Participant template not found");
-    const template = participantTemplateInputSchema.parse(payload.template);
-    const rules = (payload.rules ?? []).map((rule) => participantRuleInputSchema.parse(rule));
+    const { template, rules } = this.parseTemplatePayload(input);
     const updated = await participantTemplateRepository.update(userId, id, template, rules);
     return mapTemplate(updated);
   }

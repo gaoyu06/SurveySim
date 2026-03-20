@@ -73,6 +73,26 @@ export const surveyDraftSchema = z.object({
   extractionNotes: z.array(z.string()).default([]),
 });
 
+export const surveyImportStreamEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("status"),
+    stage: z.enum(["queued", "extracting", "repairing", "normalizing", "completed"]),
+    message: z.string(),
+  }),
+  z.object({
+    type: z.literal("delta"),
+    chunk: z.string(),
+  }),
+  z.object({
+    type: z.literal("draft"),
+    draft: surveyDraftSchema,
+  }),
+  z.object({
+    type: z.literal("error"),
+    message: z.string(),
+  }),
+]);
+
 export const surveySaveInputSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
@@ -83,3 +103,4 @@ export const surveySaveInputSchema = z.object({
 export type SurveySchemaDto = z.infer<typeof surveySchema>;
 export type SurveyDraft = z.infer<typeof surveyDraftSchema>;
 export type SurveySaveInput = z.infer<typeof surveySaveInputSchema>;
+export type SurveyImportStreamEvent = z.infer<typeof surveyImportStreamEventSchema>;

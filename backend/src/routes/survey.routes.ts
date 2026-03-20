@@ -8,6 +8,7 @@ export async function surveyRoutes(app: FastifyInstance) {
   app.get("/", auth, controller.list as any);
   app.get("/:id", auth, controller.get as any);
   app.post("/import", auth, controller.importDraft as any);
+  app.post("/import/stream", auth, controller.importDraftStream as any);
   app.post("/", auth, controller.create as any);
   app.put("/:id", auth, controller.update as any);
 }

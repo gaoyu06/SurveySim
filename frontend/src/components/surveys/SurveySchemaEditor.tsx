@@ -1,4 +1,4 @@
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, InputNumber, Select, Space, Switch, Typography } from "antd";
 import type { SurveySchemaDto } from "@formagents/shared";
 
@@ -14,8 +14,22 @@ const questionTypeOptions = [
   "respondent_instruction",
 ].map((value) => ({ label: value, value }));
 
+const languageOptions = [
+  { label: "auto", value: "auto" },
+  { label: "zh-CN", value: "zh-CN" },
+  { label: "en-US", value: "en-US" },
+];
+
 function uid(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function reorderByIndex<T extends { displayOrder: number }>(items: T[], fromIndex: number, toIndex: number) {
+  if (toIndex < 0 || toIndex >= items.length) return items;
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next.map((item, index) => ({ ...item, displayOrder: index }));
 }
 
 export function SurveySchemaEditor({ value, onChange }: { value: SurveySchemaDto; onChange: (next: SurveySchemaDto) => void }) {
@@ -40,16 +54,42 @@ export function SurveySchemaEditor({ value, onChange }: { value: SurveySchemaDto
         <Form.Item label="Survey title">
           <Input value={value.survey.title} onChange={(event) => onChange({ ...value, survey: { ...value.survey, title: event.target.value } })} />
         </Form.Item>
+        <Form.Item label="Survey description">
+          <Input.TextArea rows={2} value={value.survey.description} onChange={(event) => onChange({ ...value, survey: { ...value.survey, description: event.target.value } })} />
+        </Form.Item>
+        <Space wrap style={{ width: "100%" }} align="start">
+          <Form.Item label="Language" style={{ minWidth: 180 }}>
+            <Select
+              value={value.survey.language}
+              options={languageOptions}
+              onChange={(language) => onChange({ ...value, survey: { ...value.survey, language } })}
+            />
+          </Form.Item>
+        </Space>
         <Form.Item label="Respondent instructions">
           <Input.TextArea rows={3} value={value.survey.respondentInstructions} onChange={(event) => onChange({ ...value, survey: { ...value.survey, respondentInstructions: event.target.value } })} />
         </Form.Item>
       </Form>
 
-      {value.sections.map((section) => (
+      {value.sections.map((section, sectionIndex) => (
         <Card
           key={section.id}
           title={section.title}
-          extra={<Button danger icon={<DeleteOutlined />} onClick={() => onChange({ ...value, sections: value.sections.filter((item) => item.id !== section.id) })} />}
+          extra={
+            <Space>
+              <Button
+                icon={<ArrowUpOutlined />}
+                disabled={sectionIndex === 0}
+                onClick={() => onChange({ ...value, sections: reorderByIndex(value.sections, sectionIndex, sectionIndex - 1) })}
+              />
+              <Button
+                icon={<ArrowDownOutlined />}
+                disabled={sectionIndex === value.sections.length - 1}
+                onClick={() => onChange({ ...value, sections: reorderByIndex(value.sections, sectionIndex, sectionIndex + 1) })}
+              />
+              <Button danger icon={<DeleteOutlined />} onClick={() => onChange({ ...value, sections: value.sections.filter((item) => item.id !== section.id).map((item, index) => ({ ...item, displayOrder: index })) })} />
+            </Space>
+          }
         >
           <Form layout="vertical">
             <Form.Item label="Section title">
@@ -60,17 +100,49 @@ export function SurveySchemaEditor({ value, onChange }: { value: SurveySchemaDto
             </Form.Item>
           </Form>
           <Space direction="vertical" style={{ width: "100%" }} size={12}>
-            {section.questions.map((question) => (
+            {section.questions.map((question, questionIndex) => (
               <div key={question.id} className="rule-card">
                 <Space align="start" style={{ width: "100%", justifyContent: "space-between" }}>
-                  <Typography.Title level={5} style={{ marginTop: 0 }}>{question.title || question.id}</Typography.Title>
-                  <Button
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => updateSection(section.id, (current) => ({ ...current, questions: current.questions.filter((item) => item.id !== question.id) }))}
-                  />
+                  <Typography.Title level={5} style={{ marginTop: 0 }}>
+                    {question.title || question.id}
+                  </Typography.Title>
+                  <Space>
+                    <Button
+                      icon={<ArrowUpOutlined />}
+                      disabled={questionIndex === 0}
+                      onClick={() =>
+                        updateSection(section.id, (current) => ({
+                          ...current,
+                          questions: reorderByIndex(current.questions, questionIndex, questionIndex - 1),
+                        }))
+                      }
+                    />
+                    <Button
+                      icon={<ArrowDownOutlined />}
+                      disabled={questionIndex === section.questions.length - 1}
+                      onClick={() =>
+                        updateSection(section.id, (current) => ({
+                          ...current,
+                          questions: reorderByIndex(current.questions, questionIndex, questionIndex + 1),
+                        }))
+                      }
+                    />
+                    <Button
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() =>
+                        updateSection(section.id, (current) => ({
+                          ...current,
+                          questions: current.questions.filter((item) => item.id !== question.id).map((item, index) => ({ ...item, displayOrder: index })),
+                        }))
+                      }
+                    />
+                  </Space>
                 </Space>
                 <Form layout="vertical">
+                  <Form.Item label="Question code">
+                    <Input value={question.code} onChange={(event) => updateQuestion(section.id, question.id, (current) => ({ ...current, code: event.target.value || undefined }))} />
+                  </Form.Item>
                   <Form.Item label="Title">
                     <Input value={question.title} onChange={(event) => updateQuestion(section.id, question.id, (current) => ({ ...current, title: event.target.value }))} />
                   </Form.Item>
@@ -82,7 +154,7 @@ export function SurveySchemaEditor({ value, onChange }: { value: SurveySchemaDto
                   </Form.Item>
                   <Space wrap>
                     <Form.Item label="Type">
-                      <Select value={question.type} style={{ width: 200 }} options={questionTypeOptions} onChange={(type) => updateQuestion(section.id, question.id, (current) => ({ ...current, type }))} />
+                      <Select value={question.type} style={{ width: 220 }} options={questionTypeOptions} onChange={(type) => updateQuestion(section.id, question.id, (current) => ({ ...current, type }))} />
                     </Form.Item>
                     <Form.Item label="Required">
                       <Switch checked={question.required} onChange={(required) => updateQuestion(section.id, question.id, (current) => ({ ...current, required }))} />
@@ -136,15 +208,69 @@ export function SurveySchemaEditor({ value, onChange }: { value: SurveySchemaDto
                   ) : null}
                   {["single_choice", "multi_choice", "single_choice_other", "multi_choice_other"].includes(question.type) ? (
                     <Space direction="vertical" style={{ width: "100%" }}>
-                      {question.options.map((option) => (
+                      {question.options.map((option, optionIndex) => (
                         <Space key={option.id} style={{ width: "100%" }} align="start">
-                          <Input value={option.label} placeholder="Option label" onChange={(event) => updateQuestion(section.id, question.id, (current) => ({ ...current, options: current.options.map((candidate) => candidate.id === option.id ? { ...candidate, label: event.target.value, value: event.target.value } : candidate) }))} />
-                          <Switch checked={Boolean(option.allowOther)} onChange={(allowOther) => updateQuestion(section.id, question.id, (current) => ({ ...current, options: current.options.map((candidate) => candidate.id === option.id ? { ...candidate, allowOther } : candidate) }))} />
-                          <Button danger icon={<DeleteOutlined />} onClick={() => updateQuestion(section.id, question.id, (current) => ({ ...current, options: current.options.filter((candidate) => candidate.id !== option.id) }))} />
+                          <Input
+                            value={option.label}
+                            placeholder="Option label"
+                            onChange={(event) =>
+                              updateQuestion(section.id, question.id, (current) => ({
+                                ...current,
+                                options: current.options.map((candidate) => (candidate.id === option.id ? { ...candidate, label: event.target.value, value: event.target.value } : candidate)),
+                              }))
+                            }
+                          />
+                          <Switch
+                            checked={Boolean(option.allowOther)}
+                            onChange={(allowOther) =>
+                              updateQuestion(section.id, question.id, (current) => ({
+                                ...current,
+                                options: current.options.map((candidate) => (candidate.id === option.id ? { ...candidate, allowOther } : candidate)),
+                              }))
+                            }
+                          />
+                          <Button
+                            icon={<ArrowUpOutlined />}
+                            disabled={optionIndex === 0}
+                            onClick={() =>
+                              updateQuestion(section.id, question.id, (current) => ({
+                                ...current,
+                                options: reorderByIndex(current.options, optionIndex, optionIndex - 1),
+                              }))
+                            }
+                          />
+                          <Button
+                            icon={<ArrowDownOutlined />}
+                            disabled={optionIndex === question.options.length - 1}
+                            onClick={() =>
+                              updateQuestion(section.id, question.id, (current) => ({
+                                ...current,
+                                options: reorderByIndex(current.options, optionIndex, optionIndex + 1),
+                              }))
+                            }
+                          />
+                          <Button
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() =>
+                              updateQuestion(section.id, question.id, (current) => ({
+                                ...current,
+                                options: current.options.filter((candidate) => candidate.id !== option.id).map((candidate, index) => ({ ...candidate, displayOrder: index })),
+                              }))
+                            }
+                          />
                         </Space>
                       ))}
                       <Typography.Text type="secondary">Each option can independently allow free-text other input.</Typography.Text>
-                      <Button icon={<PlusOutlined />} onClick={() => updateQuestion(section.id, question.id, (current) => ({ ...current, options: [...current.options, { id: uid("option"), label: "New option", value: "New option", displayOrder: current.options.length }] }))}>
+                      <Button
+                        icon={<PlusOutlined />}
+                        onClick={() =>
+                          updateQuestion(section.id, question.id, (current) => ({
+                            ...current,
+                            options: [...current.options, { id: uid("option"), label: "New option", value: "New option", displayOrder: current.options.length }],
+                          }))
+                        }
+                      >
                         Add option
                       </Button>
                     </Space>
@@ -155,23 +281,26 @@ export function SurveySchemaEditor({ value, onChange }: { value: SurveySchemaDto
             <Button
               type="dashed"
               icon={<PlusOutlined />}
-              onClick={() => updateSection(section.id, (current) => ({
-                ...current,
-                questions: [
-                  ...current.questions,
-                  {
-                    id: uid("question"),
-                    title: "New question",
-                    type: "single_choice",
-                    required: false,
-                    displayOrder: current.questions.length,
-                    options: [
-                      { id: uid("option"), label: "Option A", value: "Option A", displayOrder: 0 },
-                      { id: uid("option"), label: "Option B", value: "Option B", displayOrder: 1 },
-                    ],
-                  },
-                ],
-              }))}
+              onClick={() =>
+                updateSection(section.id, (current) => ({
+                  ...current,
+                  questions: [
+                    ...current.questions,
+                    {
+                      id: uid("question"),
+                      code: undefined,
+                      title: "New question",
+                      type: "single_choice",
+                      required: false,
+                      displayOrder: current.questions.length,
+                      options: [
+                        { id: uid("option"), label: "Option A", value: "Option A", displayOrder: 0 },
+                        { id: uid("option"), label: "Option B", value: "Option B", displayOrder: 1 },
+                      ],
+                    },
+                  ],
+                }))
+              }
             >
               Add question
             </Button>

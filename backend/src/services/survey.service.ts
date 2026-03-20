@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { surveyImportInputSchema, surveySaveInputSchema, surveySchema, type SurveyDraft, type SurveySchemaDto } from "@formagents/shared";
+import { surveyImportInputSchema, surveySaveInputSchema, surveySchema, type SurveyDraft, type SurveyImportStreamEvent, type SurveySchemaDto } from "@formagents/shared";
 import { fromJson } from "../lib/json.js";
 import { llmConfigRepository } from "../repositories/llm-config.repository.js";
 import { surveyRepository } from "../repositories/survey.repository.js";
@@ -207,6 +207,127 @@ ${payload.rawText}`,
     };
 
     return normalized;
+  }
+
+  async *importDraftStream(userId: string, input: unknown): AsyncGenerator<SurveyImportStreamEvent> {
+    yield {
+      type: "status",
+      stage: "queued",
+      message: "Survey extraction queued",
+    };
+
+    const payload = surveyImportInputSchema.parse(input);
+    const config = payload.llmConfigId
+      ? await this.llmService.getRuntimeConfig(userId, payload.llmConfigId)
+      : await this.llmService.getDefaultRuntimeConfig(userId);
+
+    yield {
+      type: "status",
+      stage: "extracting",
+      message: "Calling LLM to extract questionnaire structure",
+    };
+
+    const queue: SurveyImportStreamEvent[] = [];
+    let resolveNext: (() => void) | null = null;
+    let settled = false;
+    let failure: Error | null = null;
+    let llmResult: any;
+
+    const push = (event: SurveyImportStreamEvent) => {
+      queue.push(event);
+      resolveNext?.();
+      resolveNext = null;
+    };
+
+    const task = this.llmService
+      .generateJsonWithEvents<any>(
+        config,
+        [
+          {
+            role: "system",
+            content: [
+              "You are a survey structure extraction engine.",
+              "Convert raw questionnaire text into strict JSON.",
+              "Keep original language.",
+              "Use question types: single_choice, multi_choice, single_choice_other, multi_choice_other, rating, open_text, paragraph, section_title, respondent_instruction.",
+              "Every question and option must include stable ids.",
+              "Return JSON only with keys: rawText, schema, extractionNotes.",
+            ].join(" "),
+          },
+          {
+            role: "user",
+            content: `Raw survey content:
+${payload.rawText}`,
+          },
+        ],
+        "Return valid JSON for the survey draft only.",
+        (event) => {
+          if (event.type === "delta" && event.chunk) {
+            push({
+              type: "delta",
+              chunk: event.chunk,
+            });
+            return;
+          }
+
+          if (event.type === "status" && event.message) {
+            push({
+              type: "status",
+              stage: "repairing",
+              message: event.message,
+            });
+          }
+        },
+      )
+      .then((result) => {
+        llmResult = result;
+      })
+      .catch((error) => {
+        failure = error instanceof Error ? error : new Error(String(error));
+      })
+      .finally(() => {
+        settled = true;
+        resolveNext?.();
+        resolveNext = null;
+      });
+
+    while (!settled || queue.length > 0) {
+      if (queue.length === 0) {
+        await new Promise<void>((resolve) => {
+          resolveNext = resolve;
+        });
+        continue;
+      }
+      yield queue.shift()!;
+    }
+
+    await task;
+    if (failure) {
+      throw failure;
+    }
+
+    yield {
+      type: "status",
+      stage: "normalizing",
+      message: "Normalizing extracted schema",
+    };
+
+    const draft = {
+      rawText: payload.rawText,
+      schema: ensureSchemaIds(surveySchema.parse(normalizeLooseSchema(pickSchemaCandidate(llmResult), payload.title))),
+      extractionNotes: llmResult.extractionNotes ?? llmResult.notes ?? [],
+    };
+
+    yield {
+      type: "draft",
+      draft,
+    };
+
+    yield {
+      type: "status",
+      stage: "completed",
+      message: "Extraction completed. Review and edit before saving.",
+    };
   }
 
   async create(userId: string, input: unknown) {

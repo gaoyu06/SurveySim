@@ -105,6 +105,15 @@ export class LlmService {
     return this.adapter.chatJson<T>(config, messages, fixerPrompt);
   }
 
+  async generateJsonWithEvents<T>(
+    config: LlmRuntimeConfig,
+    messages: ChatMessage[],
+    fixerPrompt: string,
+    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => void,
+  ) {
+    return this.adapter.chatJsonWithEvents<T>(config, messages, fixerPrompt, onEvent);
+  }
+
   async generateText(config: LlmRuntimeConfig, messages: ChatMessage[]) {
     return this.adapter.chatText(config, messages);
   }

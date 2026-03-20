@@ -10,5 +10,12 @@ export function reportControllerFactory(service: ReportService) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }
     },
+    compare: async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        reply.send(await service.compareRuns(request.authUser!.id, request.body));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
+    },
   };
 }

@@ -1,7 +1,18 @@
-import { reportFilterSchema, type ParticipantIdentity, type ReportDto, type ReportFilter, type StructuredAnswer, type SurveySchemaDto } from "@formagents/shared";
+import {
+  reportComparisonInputSchema,
+  reportFilterSchema,
+  type ParticipantIdentity,
+  type ReportComparisonDto,
+  type ReportDto,
+  type ReportFilter,
+  type StructuredAnswer,
+  type SurveySchemaDto,
+} from "@formagents/shared";
 import { prisma } from "../../lib/db.js";
 import { fromJson, toJson } from "../../lib/json.js";
 import { LlmService } from "../llm/llm.service.js";
+
+type LoadedRun = Awaited<ReturnType<ReportService["loadRun"]>>;
 
 function percentile(values: number[], fraction: number) {
   if (values.length === 0) return 0;
@@ -39,10 +50,13 @@ function getGroupInfo(identity: ParticipantIdentity, groupBy?: string) {
   return { key: label, label };
 }
 
-function getQuestionAnswers(participants: Array<{
-  identity: ParticipantIdentity;
-  answers: StructuredAnswer[];
-}>, questionId: string) {
+function getQuestionAnswers(
+  participants: Array<{
+    identity: ParticipantIdentity;
+    answers: StructuredAnswer[];
+  }>,
+  questionId: string,
+) {
   return participants.flatMap((participant) =>
     participant.answers
       .filter((answer) => answer.questionId === questionId)
@@ -50,21 +64,81 @@ function getQuestionAnswers(participants: Array<{
   );
 }
 
+function round(value: number) {
+  return Number(value.toFixed(2));
+}
+
 export class ReportService {
   private readonly llmService = new LlmService();
 
   async getReport(userId: string, runId: string, input: unknown): Promise<ReportDto> {
     const filters = reportFilterSchema.parse(input ?? {});
+    const run = await this.loadRun(userId, runId);
+    const report = await this.buildReport(run, filters);
+
+    await prisma.aggregatedReport.upsert({
+      where: { mockRunId: runId },
+      create: { mockRunId: runId, payload: toJson(report) },
+      update: { payload: toJson(report) },
+    });
+
+    return report;
+  }
+
+  async compareRuns(userId: string, input: unknown): Promise<ReportComparisonDto> {
+    const payload = reportComparisonInputSchema.parse(input);
+    const runs = await Promise.all(payload.runIds.map((runId) => this.loadRun(userId, runId)));
+
+    const surveyIds = new Set(runs.map((run) => run.surveyId));
+    if (surveyIds.size > 1) {
+      throw new Error("Comparison only supports runs from the same survey");
+    }
+
+    const builtRuns = await Promise.all(
+      runs.map(async (run) => {
+        const report = await this.buildReport(run, payload);
+        return {
+          runId: report.runId,
+          runName: run.name,
+          surveyId: run.surveyId,
+          totalResponses: report.totalResponses,
+          groupedBy: report.groupedBy,
+          groups: report.groups,
+          questions: report.questions,
+        };
+      }),
+    );
+
+    return {
+      runIds: payload.runIds,
+      filters: {
+        attributes: payload.attributes,
+        groupBy: payload.groupBy,
+      },
+      groupedBy: payload.groupBy,
+      runs: builtRuns,
+    };
+  }
+
+  private async loadRun(userId: string, runId: string) {
     const run = await prisma.mockRun.findFirst({
       where: { id: runId, userId },
       include: {
         survey: true,
-        participantInstances: { include: { surveyResponse: { include: { answers: true } } }, orderBy: { ordinal: "asc" } },
-        aggregatedReport: true,
+        participantInstances: {
+          include: {
+            surveyResponse: { include: { answers: true } },
+          },
+          orderBy: { ordinal: "asc" },
+        },
       },
     });
 
     if (!run) throw new Error("Mock run not found");
+    return run;
+  }
+
+  private async buildReport(run: LoadedRun, filters: ReportFilter): Promise<ReportDto> {
     const schema = fromJson<SurveySchemaDto>(run.survey.schema);
     const participants = run.participantInstances
       .map((participant) => ({
@@ -90,14 +164,14 @@ export class ReportService {
         const answers = getQuestionAnswers(participants, question.id);
 
         if (["single_choice", "single_choice_other"].includes(question.type)) {
-          const items = question.options.map((option) => ({
-            label: option.label,
-            count: answers.filter(({ answer }) => answer.selectedOptionIds.includes(option.id)).length,
-            percentage: 0,
-          }));
-          for (const item of items) {
-            item.percentage = participants.length ? Number(((item.count / participants.length) * 100).toFixed(2)) : 0;
-          }
+          const items = question.options.map((option) => {
+            const count = answers.filter(({ answer }) => answer.selectedOptionIds.includes(option.id)).length;
+            return {
+              label: option.label,
+              count,
+              percentage: participants.length ? round((count / participants.length) * 100) : 0,
+            };
+          });
 
           const groupedSingleChoice = filters.groupBy
             ? Object.fromEntries(
@@ -111,7 +185,7 @@ export class ReportService {
                       groupKey: label,
                       groupLabel: label,
                       count,
-                      percentage: total ? Number(((count / total) * 100).toFixed(2)) : 0,
+                      percentage: total ? round((count / total) * 100) : 0,
                     };
                   }),
                 ]),
@@ -129,14 +203,14 @@ export class ReportService {
         }
 
         if (["multi_choice", "multi_choice_other"].includes(question.type)) {
-          const items = question.options.map((option) => ({
-            label: option.label,
-            count: answers.filter(({ answer }) => answer.selectedOptionIds.includes(option.id)).length,
-            percentage: 0,
-          }));
-          for (const item of items) {
-            item.percentage = participants.length ? Number(((item.count / participants.length) * 100).toFixed(2)) : 0;
-          }
+          const items = question.options.map((option) => {
+            const count = answers.filter(({ answer }) => answer.selectedOptionIds.includes(option.id)).length;
+            return {
+              label: option.label,
+              count,
+              percentage: participants.length ? round((count / participants.length) * 100) : 0,
+            };
+          });
 
           const groupedMultiChoice = filters.groupBy
             ? Object.fromEntries(
@@ -150,7 +224,7 @@ export class ReportService {
                       groupKey: label,
                       groupLabel: label,
                       count,
-                      percentage: total ? Number(((count / total) * 100).toFixed(2)) : 0,
+                      percentage: total ? round((count / total) * 100) : 0,
                     };
                   }),
                 ]),
@@ -168,8 +242,13 @@ export class ReportService {
         }
 
         if (question.type === "rating") {
-          const values = answers.map(({ answer }) => answer.ratingValue).filter((value): value is number => typeof value === "number").sort((a, b) => a - b);
-          const distribution = Array.from(new Set(values)).sort((a, b) => a - b).map((value) => ({ label: String(value), count: values.filter((item) => item === value).length }));
+          const values = answers
+            .map(({ answer }) => answer.ratingValue)
+            .filter((value): value is number => typeof value === "number")
+            .sort((a, b) => a - b);
+          const distribution = Array.from(new Set(values))
+            .sort((a, b) => a - b)
+            .map((value) => ({ label: String(value), count: values.filter((item) => item === value).length }));
           const mean = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
           const groupedRating = filters.groupBy
@@ -182,9 +261,9 @@ export class ReportService {
                 return {
                   groupKey: label,
                   groupLabel: label,
-                  mean: Number(groupMean.toFixed(2)),
-                  median: Number(percentile(groupValues, 0.5).toFixed(2)),
-                  stdDev: Number(stdDev(groupValues).toFixed(2)),
+                  mean: round(groupMean),
+                  median: round(percentile(groupValues, 0.5)),
+                  stdDev: round(stdDev(groupValues)),
                   count: groupValues.length,
                 };
               })
@@ -195,9 +274,9 @@ export class ReportService {
             title: question.title,
             type: question.type,
             rating: {
-              mean: Number(mean.toFixed(2)),
-              median: Number(percentile(values, 0.5).toFixed(2)),
-              stdDev: Number(stdDev(values).toFixed(2)),
+              mean: round(mean),
+              median: round(percentile(values, 0.5)),
+              stdDev: round(stdDev(values)),
               distribution,
             },
             groupedRating,
@@ -211,7 +290,7 @@ export class ReportService {
 
         if (openAnswers.length > 0) {
           try {
-            const config = await this.llmService.getRuntimeConfig(userId, run.llmConfigId);
+            const config = await this.llmService.getRuntimeConfig(run.userId, run.llmConfigId);
             const openSummary = await this.llmService.generateJson<{ summary: string; keywords: string[] }>(
               config,
               [
@@ -253,21 +332,13 @@ export class ReportService {
       }
     }
 
-    const report: ReportDto = {
-      runId,
+    return {
+      runId: run.id,
       filters,
       totalResponses: participants.filter((participant) => participant.responseStatus === "COMPLETED").length,
       groupedBy: filters.groupBy,
       groups: Array.from(grouped.entries()).map(([label, count]) => ({ key: label, label, count })),
       questions: questionReports,
     };
-
-    await prisma.aggregatedReport.upsert({
-      where: { mockRunId: runId },
-      create: { mockRunId: runId, payload: toJson(report) },
-      update: { payload: toJson(report) },
-    });
-
-    return report;
   }
 }
