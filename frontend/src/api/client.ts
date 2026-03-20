@@ -10,17 +10,24 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = authStore.getState().token;
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
-  if (!(options.body instanceof FormData)) {
+  if (options.body !== undefined && options.body !== null && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
+  const serializedBody =
+    options.body instanceof FormData
+      ? options.body
+      : options.body !== undefined && options.body !== null
+        ? JSON.stringify(options.body)
+        : undefined;
+
   const response = await fetch(`/api${path}`, {
     ...options,
     headers,
-    body: options.body instanceof FormData ? options.body : options.body ? JSON.stringify(options.body) : undefined,
+    body: serializedBody,
   });
 
   const text = await response.text();
