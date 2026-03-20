@@ -10,6 +10,7 @@ import {
   type LlmProviderConfigInput,
 } from "@formagents/shared";
 import { ApiError, apiClient } from "@/api/client";
+import { useI18n } from "@/i18n/I18nProvider";
 import { PageHeader, Panel } from "@/components/PageHeader";
 
 const defaultValues: LlmProviderConfigInput = {
@@ -26,6 +27,7 @@ const defaultValues: LlmProviderConfigInput = {
 };
 
 export function LlmConfigsPage() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<LlmProviderConfigDto | null>(null);
   const { message } = App.useApp();
@@ -46,7 +48,7 @@ export function LlmConfigsPage() {
         ? apiClient.put<LlmProviderConfigDto>(`/llm-configs/${editing.id}`, values)
         : apiClient.post<LlmProviderConfigDto>("/llm-configs", values),
     onSuccess: () => {
-      message.success(editing ? "Config updated" : "Config created");
+      message.success(editing ? t("llm.configUpdated") : t("llm.configCreated"));
       setOpen(false);
       setEditing(null);
       form.reset(defaultValues);
@@ -58,7 +60,7 @@ export function LlmConfigsPage() {
   const testMutation = useMutation({
     mutationFn: (values: LlmProviderConfigInput) =>
       apiClient.post<{ ok: boolean }>("/llm-configs/test", values),
-    onSuccess: (result) => message.success(result.ok ? "Connection succeeded" : "Connection failed"),
+    onSuccess: (result) => message.success(result.ok ? t("llm.connectionSucceeded") : t("llm.connectionFailed")),
     onError: (error: Error) => message.error(error.message),
   });
 
@@ -71,20 +73,20 @@ export function LlmConfigsPage() {
   const handleDefault = async (id: string) => {
     try {
       await apiClient.post(`/llm-configs/${id}/default`);
-      message.success("Default config updated");
+      message.success(t("llm.defaultUpdated"));
       queryClient.invalidateQueries({ queryKey: ["llm-configs"] });
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "Failed to update default");
+      message.error(error instanceof Error ? error.message : t("llm.defaultUpdated"));
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       await apiClient.delete(`/llm-configs/${id}`);
-      message.success("Config deleted");
+      message.success(t("llm.configDeleted"));
       queryClient.invalidateQueries({ queryKey: ["llm-configs"] });
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "Failed to delete config");
+      message.error(error instanceof Error ? error.message : t("llm.configDeleted"));
     }
   };
 
@@ -103,10 +105,10 @@ export function LlmConfigsPage() {
     try {
       const values = form.getValues();
       const result = await testMutation.mutateAsync(values);
-      message.success(result.ok ? "Connection succeeded" : "Connection failed");
+      message.success(result.ok ? t("llm.connectionSucceeded") : t("llm.connectionFailed"));
     } catch (error) {
       const errorMessage =
-        error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Connection test failed";
+        error instanceof ApiError ? error.message : error instanceof Error ? error.message : t("llm.connectionFailed");
       message.error(errorMessage);
     }
   };
@@ -114,8 +116,8 @@ export function LlmConfigsPage() {
   return (
     <>
       <PageHeader
-        title="LLM provider control"
-        subtitle="Store multiple OpenAI-compatible endpoints, choose defaults, and verify runtime behavior before mock execution."
+        title={t("llm.title")}
+        subtitle={t("llm.subtitle")}
         actions={
           <Button
             type="primary"
@@ -126,7 +128,7 @@ export function LlmConfigsPage() {
               setOpen(true);
             }}
           >
-            New config
+            {t("llm.newConfig")}
           </Button>
         }
       />
@@ -137,17 +139,17 @@ export function LlmConfigsPage() {
           dataSource={query.data ?? []}
           pagination={false}
           columns={[
-            { title: "Name", dataIndex: "name" },
-            { title: "Base URL", dataIndex: "baseUrl", ellipsis: true },
-            { title: "Model", dataIndex: "model" },
-            { title: "Concurrency", dataIndex: "concurrency" },
-            { title: "API Key", dataIndex: "maskedApiKey" },
+            { title: t("llm.name"), dataIndex: "name" },
+            { title: t("llm.baseUrl"), dataIndex: "baseUrl", ellipsis: true },
+            { title: t("llm.model"), dataIndex: "model" },
+            { title: t("llm.concurrency"), dataIndex: "concurrency" },
+            { title: t("llm.apiKey"), dataIndex: "maskedApiKey" },
             {
-              title: "State",
-              render: (_, item) => (item.isDefault ? <Tag color="gold">Default</Tag> : <Tag>Saved</Tag>),
+              title: t("llm.state"),
+              render: (_, item) => (item.isDefault ? <Tag color="blue">{t("llm.defaultTag")}</Tag> : <Tag>{t("llm.savedTag")}</Tag>),
             },
             {
-              title: "Actions",
+              title: t("common.actions"),
               render: (_, item) => (
                 <Space>
                   <Button
@@ -157,16 +159,16 @@ export function LlmConfigsPage() {
                       setOpen(true);
                     }}
                   >
-                    Edit
+                    {t("common.edit")}
                   </Button>
                   <Button
                     icon={<CheckCircleOutlined />}
                     onClick={() => handleDefault(item.id)}
                   >
-                    Default
+                    {t("common.default")}
                   </Button>
                   <Button danger onClick={() => handleDelete(item.id)}>
-                    Delete
+                    {t("common.delete")}
                   </Button>
                 </Space>
               ),
@@ -178,12 +180,12 @@ export function LlmConfigsPage() {
         open={open}
         onClose={closeDrawer}
         width={520}
-        title={editing ? "Edit LLM config" : "New LLM config"}
+        title={editing ? t("llm.editConfig") : t("llm.createConfig")}
       >
         <form onSubmit={form.handleSubmit(submit)} noValidate>
           <Form layout="vertical" component={false}>
           <Form.Item
-            label="Name"
+            label={t("llm.name")}
             validateStatus={form.formState.errors.name ? "error" : ""}
             help={form.formState.errors.name?.message}
           >
@@ -194,7 +196,7 @@ export function LlmConfigsPage() {
             />
           </Form.Item>
           <Form.Item
-            label="Base URL"
+            label={t("llm.baseUrl")}
             validateStatus={form.formState.errors.baseUrl ? "error" : ""}
             help={form.formState.errors.baseUrl?.message}
           >
@@ -205,7 +207,7 @@ export function LlmConfigsPage() {
             />
           </Form.Item>
           <Form.Item
-            label="API Key"
+            label={t("llm.apiKey")}
             validateStatus={form.formState.errors.apiKey ? "error" : ""}
             help={form.formState.errors.apiKey?.message}
           >
@@ -216,7 +218,7 @@ export function LlmConfigsPage() {
             />
           </Form.Item>
           <Form.Item
-            label="Model"
+            label={t("llm.model")}
             validateStatus={form.formState.errors.model ? "error" : ""}
             help={form.formState.errors.model?.message}
           >
@@ -227,7 +229,7 @@ export function LlmConfigsPage() {
             />
           </Form.Item>
           <Space>
-            <Form.Item label="Temperature" validateStatus={form.formState.errors.temperature ? "error" : ""} help={form.formState.errors.temperature?.message}>
+            <Form.Item label={t("llm.temperature")} validateStatus={form.formState.errors.temperature ? "error" : ""} help={form.formState.errors.temperature?.message}>
               <Controller
                 name="temperature"
                 control={form.control}
@@ -242,7 +244,7 @@ export function LlmConfigsPage() {
                 )}
               />
             </Form.Item>
-            <Form.Item label="Max tokens" validateStatus={form.formState.errors.maxTokens ? "error" : ""} help={form.formState.errors.maxTokens?.message}>
+            <Form.Item label={t("llm.maxTokens")} validateStatus={form.formState.errors.maxTokens ? "error" : ""} help={form.formState.errors.maxTokens?.message}>
               <Controller
                 name="maxTokens"
                 control={form.control}
@@ -258,7 +260,7 @@ export function LlmConfigsPage() {
             </Form.Item>
           </Space>
           <Space>
-            <Form.Item label="Timeout ms" validateStatus={form.formState.errors.timeoutMs ? "error" : ""} help={form.formState.errors.timeoutMs?.message}>
+            <Form.Item label={t("llm.timeoutMs")} validateStatus={form.formState.errors.timeoutMs ? "error" : ""} help={form.formState.errors.timeoutMs?.message}>
               <Controller
                 name="timeoutMs"
                 control={form.control}
@@ -272,7 +274,7 @@ export function LlmConfigsPage() {
                 )}
               />
             </Form.Item>
-            <Form.Item label="Concurrency" validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
+            <Form.Item label={t("llm.concurrency")} validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
               <Controller
                 name="concurrency"
                 control={form.control}
@@ -286,7 +288,7 @@ export function LlmConfigsPage() {
                 )}
               />
             </Form.Item>
-            <Form.Item label="Retries" validateStatus={form.formState.errors.retryCount ? "error" : ""} help={form.formState.errors.retryCount?.message}>
+            <Form.Item label={t("llm.retries")} validateStatus={form.formState.errors.retryCount ? "error" : ""} help={form.formState.errors.retryCount?.message}>
               <Controller
                 name="retryCount"
                 control={form.control}
@@ -301,7 +303,7 @@ export function LlmConfigsPage() {
               />
             </Form.Item>
           </Space>
-          <Form.Item label="Set as default">
+          <Form.Item label={t("llm.setAsDefault")}>
             <Controller
               name="isDefault"
               control={form.control}
@@ -316,10 +318,10 @@ export function LlmConfigsPage() {
               onClick={() => void testConnection()}
               loading={testMutation.isPending}
             >
-              Test connection
+              {t("llm.testConnection")}
             </Button>
             <Button type="primary" htmlType="submit" loading={saveMutation.isPending}>
-              Save
+              {t("llm.save")}
             </Button>
           </Space>
           </Form>

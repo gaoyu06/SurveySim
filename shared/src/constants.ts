@@ -20,6 +20,7 @@ export const QUESTION_TYPES = [
   "multi_choice",
   "single_choice_other",
   "multi_choice_other",
+  "matrix_single_choice",
   "rating",
   "open_text",
   "paragraph",

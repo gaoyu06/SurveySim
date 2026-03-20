@@ -1,35 +1,40 @@
 import { DatabaseOutlined, ExperimentOutlined, FileTextOutlined, RadarChartOutlined, SettingOutlined, TeamOutlined } from "@ant-design/icons";
-import { Button, Layout, Menu, Space, Typography } from "antd";
+import { Button, Layout, Menu, Select, Space, Typography } from "antd";
 import { useMemo } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useI18n } from "@/i18n/I18nProvider";
 import { authStore } from "@/stores/auth.store";
+import type { AppLocale } from "@/stores/locale.store";
 
 const { Header, Sider, Content } = Layout;
 
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { locale, setLocale, t } = useI18n();
   const user = authStore((state) => state.user);
   const clearSession = authStore((state) => state.clearSession);
 
   const items = useMemo(
     () => [
-      { key: "/", icon: <RadarChartOutlined />, label: "Dashboard" },
-      { key: "/llm-configs", icon: <SettingOutlined />, label: "LLM Configs" },
-      { key: "/templates", icon: <TeamOutlined />, label: "Participants" },
-      { key: "/surveys", icon: <FileTextOutlined />, label: "Surveys" },
-      { key: "/mock-runs", icon: <ExperimentOutlined />, label: "Mock Runs" },
-      { key: "/reports", icon: <DatabaseOutlined />, label: "Reports & Exports" },
+      { key: "/", icon: <RadarChartOutlined />, label: t("nav.dashboard") },
+      { key: "/llm-configs", icon: <SettingOutlined />, label: t("nav.llmConfigs") },
+      { key: "/templates", icon: <TeamOutlined />, label: t("nav.templates") },
+      { key: "/surveys", icon: <FileTextOutlined />, label: t("nav.surveys") },
+      { key: "/mock-runs", icon: <ExperimentOutlined />, label: t("nav.mockRuns") },
+      { key: "/reports", icon: <DatabaseOutlined />, label: t("nav.reports") },
     ],
-    [],
+    [t],
   );
+
+  const currentPage = items.find((item) => item.key === (location.pathname === "/" ? "/" : `/${location.pathname.split("/")[1]}`));
 
   return (
     <Layout className="app-shell">
-      <Sider width={260} theme="dark" style={{ background: "rgba(8,8,8,.72)", borderRight: "1px solid rgba(215,185,143,.12)" }}>
+      <Sider width={260} theme="dark" className="app-sider">
         <div className="sider-brand">
-          <div className="brand-title">FormAgents</div>
-          <div className="brand-subtitle">Synthetic survey studio</div>
+          <div className="brand-title">{t("common.appName")}</div>
+          <div className="brand-subtitle">{t("shell.subtitle")}</div>
         </div>
         <Menu
           theme="dark"
@@ -41,21 +46,43 @@ export function AppShell() {
         />
       </Sider>
       <Layout>
-        <Header style={{ background: "transparent", borderBottom: "1px solid rgba(215,185,143,.12)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Space direction="vertical" size={0}>
-            <Typography.Text style={{ color: "rgba(244,237,225,.68)", fontSize: 12, letterSpacing: ".12em", textTransform: "uppercase" }}>
-              Local AI Survey Lab
+        <Header className="app-topbar">
+          <Space direction="vertical" size={0} style={{ minWidth: 0, flex: 1 }}>
+            <Typography.Text className="topbar-label">
+              {t("shell.workspace")}
             </Typography.Text>
-            <Typography.Text style={{ color: "#f4ede1", fontSize: 16 }}>{user?.email}</Typography.Text>
+            <Typography.Text className="topbar-title" ellipsis>
+              {currentPage?.label ?? t("common.appName")}
+            </Typography.Text>
           </Space>
-          <Button
-            onClick={() => {
-              clearSession();
-              navigate("/login");
-            }}
-          >
-            Sign out
-          </Button>
+          <Space className="topbar-actions" size={12} wrap>
+            <Space direction="vertical" size={0} style={{ minWidth: 0, maxWidth: 280 }}>
+              <Typography.Text className="topbar-label">
+                {t("shell.account")}
+              </Typography.Text>
+              <Typography.Text className="topbar-email" ellipsis>
+                {user?.email}
+              </Typography.Text>
+            </Space>
+            <Select<AppLocale>
+              value={locale}
+              style={{ width: 120 }}
+              options={[
+                { label: "中文", value: "zh-CN" },
+                { label: "English", value: "en-US" },
+              ]}
+              onChange={setLocale}
+              aria-label={t("common.language")}
+            />
+            <Button
+              onClick={() => {
+                clearSession();
+                navigate("/login");
+              }}
+            >
+              {t("common.signOut")}
+            </Button>
+          </Space>
         </Header>
         <Content className="page-wrap">
           <Outlet />

@@ -84,6 +84,13 @@ export function surveyControllerFactory(service: SurveyService) {
         reply.raw.end();
       }
     },
+    retryImportRecord: async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        reply.send(await service.retryImportRecord(request.authUser!.id, request.body));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
+    },
     create: async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         reply.send(await service.create(request.authUser!.id, request.body));

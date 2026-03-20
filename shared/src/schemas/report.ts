@@ -34,6 +34,28 @@ export const groupedOpenTextMetricSchema = z.object({
   sampleAnswers: z.array(z.string()).default([]),
 });
 
+export const matrixChoiceMetricSchema = z.object({
+  columnId: z.string(),
+  label: z.string(),
+  count: z.number().int(),
+  percentage: z.number(),
+});
+
+export const groupedMatrixChoiceMetricSchema = z.object({
+  groupKey: z.string(),
+  groupLabel: z.string(),
+  count: z.number().int(),
+  percentage: z.number(),
+});
+
+export const matrixRowReportSchema = z.object({
+  rowId: z.string(),
+  rowLabel: z.string(),
+  responses: z.number().int(),
+  columns: z.array(matrixChoiceMetricSchema),
+  groupedColumns: z.record(z.string(), z.array(groupedMatrixChoiceMetricSchema)).optional(),
+});
+
 export const questionReportSchema = z.object({
   questionId: z.string(),
   title: z.string(),
@@ -49,6 +71,11 @@ export const questionReportSchema = z.object({
     })
     .optional(),
   openText: z.object({ answers: z.array(z.string()), summary: z.string().optional(), keywords: z.array(z.string()).default([]) }).optional(),
+  matrixSingleChoice: z
+    .object({
+      rows: z.array(matrixRowReportSchema),
+    })
+    .optional(),
   groupedSingleChoice: z.record(z.string(), z.array(groupedChoiceMetricSchema)).optional(),
   groupedMultiChoice: z.record(z.string(), z.array(groupedChoiceMetricSchema)).optional(),
   groupedRating: z.array(groupedRatingMetricSchema).optional(),

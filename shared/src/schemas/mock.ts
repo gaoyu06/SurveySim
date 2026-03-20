@@ -9,6 +9,14 @@ export const participantRunStatusSchema = z.enum(["pending", "running", "complet
 export const structuredAnswerSchema = z.object({
   questionId: z.string(),
   selectedOptionIds: z.array(z.string()).default([]),
+  matrixAnswers: z
+    .array(
+      z.object({
+        rowId: z.string(),
+        selectedOptionIds: z.array(z.string()).default([]),
+      }),
+    )
+    .default([]),
   otherText: z.string().optional(),
   ratingValue: z.number().optional(),
   textAnswer: z.string().optional(),

@@ -13,6 +13,7 @@ import {
 } from "@formagents/shared";
 import { apiClient } from "@/api/client";
 import { PageHeader, Panel } from "@/components/PageHeader";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type SurveyRecord = { id: string; title: string };
 
@@ -33,6 +34,7 @@ export function MockRunsPage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
   const form = useForm<MockRunCreateInput>({
     resolver: zodResolver(mockRunCreateInputSchema),
     defaultValues,
@@ -61,7 +63,7 @@ export function MockRunsPage() {
   const createMutation = useMutation({
     mutationFn: (values: MockRunCreateInput) => apiClient.post<MockRunDto>("/mock-runs", values),
     onSuccess: (result) => {
-      message.success("Mock run created");
+      message.success(t("mockRuns.runCreated"));
       form.reset(defaultValues);
       queryClient.invalidateQueries({ queryKey: ["mock-runs"] });
       navigate(`/mock-runs/${result.id}`);
@@ -85,21 +87,21 @@ export function MockRunsPage() {
   return (
     <>
       <PageHeader
-        title="Mock execution lab"
-        subtitle="Assemble a run from template, survey, and provider configuration, then execute the three-stage pipeline inside the local task engine."
+        title={t("mockRuns.title")}
+        subtitle={t("mockRuns.subtitle")}
       />
       <div className="workspace-grid">
         <Panel>
           <form onSubmit={form.handleSubmit(submit)} noValidate>
             <Form layout="vertical" component={false}>
-            <Form.Item label="Run name" validateStatus={form.formState.errors.name ? "error" : ""} help={form.formState.errors.name?.message}>
+            <Form.Item label={t("mockRuns.runName")} validateStatus={form.formState.errors.name ? "error" : ""} help={form.formState.errors.name?.message}>
               <Controller
                 name="name"
                 control={form.control}
                 render={({ field }) => <Input {...field} value={field.value ?? ""} />}
               />
             </Form.Item>
-            <Form.Item label="Participant template" validateStatus={form.formState.errors.participantTemplateId ? "error" : ""} help={form.formState.errors.participantTemplateId?.message}>
+            <Form.Item label={t("mockRuns.template")} validateStatus={form.formState.errors.participantTemplateId ? "error" : ""} help={form.formState.errors.participantTemplateId?.message}>
               <Controller
                 name="participantTemplateId"
                 control={form.control}
@@ -112,7 +114,7 @@ export function MockRunsPage() {
                 )}
               />
             </Form.Item>
-            <Form.Item label="Survey" validateStatus={form.formState.errors.surveyId ? "error" : ""} help={form.formState.errors.surveyId?.message}>
+            <Form.Item label={t("mockRuns.survey")} validateStatus={form.formState.errors.surveyId ? "error" : ""} help={form.formState.errors.surveyId?.message}>
               <Controller
                 name="surveyId"
                 control={form.control}
@@ -125,7 +127,7 @@ export function MockRunsPage() {
                 )}
               />
             </Form.Item>
-            <Form.Item label="LLM config" validateStatus={form.formState.errors.llmConfigId ? "error" : ""} help={form.formState.errors.llmConfigId?.message}>
+            <Form.Item label={t("mockRuns.llmConfig")} validateStatus={form.formState.errors.llmConfigId ? "error" : ""} help={form.formState.errors.llmConfigId?.message}>
               <Controller
                 name="llmConfigId"
                 control={form.control}
@@ -139,7 +141,7 @@ export function MockRunsPage() {
               />
             </Form.Item>
             <Space wrap>
-              <Form.Item label="Participants" validateStatus={form.formState.errors.participantCount ? "error" : ""} help={form.formState.errors.participantCount?.message}>
+              <Form.Item label={t("mockRuns.participants")} validateStatus={form.formState.errors.participantCount ? "error" : ""} help={form.formState.errors.participantCount?.message}>
                 <Controller
                   name="participantCount"
                   control={form.control}
@@ -148,7 +150,7 @@ export function MockRunsPage() {
                   )}
                 />
               </Form.Item>
-              <Form.Item label="Concurrency" validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
+              <Form.Item label={t("mockRuns.concurrency")} validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
                 <Controller
                   name="concurrency"
                   control={form.control}
@@ -157,14 +159,14 @@ export function MockRunsPage() {
                   )}
                 />
               </Form.Item>
-              <Form.Item label="Reuse identity">
+              <Form.Item label={t("mockRuns.reuseIdentity")}>
                 <Controller
                   name="reuseIdentity"
                   control={form.control}
                   render={({ field }) => <Switch checked={Boolean(field.value)} onChange={field.onChange} />}
                 />
               </Form.Item>
-              <Form.Item label="Reuse persona prompt">
+              <Form.Item label={t("mockRuns.reusePersona")}>
                 <Controller
                   name="reusePersonaPrompt"
                   control={form.control}
@@ -172,14 +174,14 @@ export function MockRunsPage() {
                 />
               </Form.Item>
             </Space>
-            <Form.Item label="Extra system prompt">
+            <Form.Item label={t("mockRuns.extraSystemPrompt")}>
               <Controller
                 name="extraSystemPrompt"
                 control={form.control}
                 render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />}
               />
             </Form.Item>
-            <Form.Item label="Extra respondent prompt">
+            <Form.Item label={t("mockRuns.extraRespondentPrompt")}>
               <Controller
                 name="extraRespondentPrompt"
                 control={form.control}
@@ -187,7 +189,7 @@ export function MockRunsPage() {
               />
             </Form.Item>
             <Button type="primary" htmlType="submit" loading={createMutation.isPending}>
-              Create run
+              {t("mockRuns.createRun")}
             </Button>
             </Form>
           </form>
@@ -199,22 +201,22 @@ export function MockRunsPage() {
             dataSource={runsQuery.data ?? []}
             pagination={false}
             columns={[
-              { title: "Run", dataIndex: "name" },
-              { title: "Status", dataIndex: "status" },
-              { title: "Participants", dataIndex: "participantCount" },
+              { title: t("mockRuns.run"), dataIndex: "name" },
+              { title: t("common.status"), dataIndex: "status" },
+              { title: t("mockRuns.participants"), dataIndex: "participantCount" },
               {
-                title: "Progress",
+                title: t("mockRuns.progress"),
                 render: (_, item) => `${item.progress.responseCompleted}/${item.progress.total}`,
               },
               {
-                title: "Actions",
+                title: t("common.actions"),
                 render: (_, item) => (
                   <Space>
                     <Button icon={<PlayCircleOutlined />} onClick={() => runAction(item.id, "start")}>
-                      Start
+                      {t("mockRuns.start")}
                     </Button>
-                    <Button onClick={() => runAction(item.id, "cancel")}>Cancel</Button>
-                    <Button onClick={() => navigate(`/mock-runs/${item.id}`)}>Detail</Button>
+                    <Button onClick={() => runAction(item.id, "cancel")}>{t("mockRuns.cancel")}</Button>
+                    <Button onClick={() => navigate(`/mock-runs/${item.id}`)}>{t("mockRuns.detail")}</Button>
                   </Space>
                 ),
               },

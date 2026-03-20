@@ -11,6 +11,7 @@ import {
 import { prisma } from "../../lib/db.js";
 import { fromJson, toJson } from "../../lib/json.js";
 import { LlmService } from "../llm/llm.service.js";
+import { buildOpenTextSummaryTask } from "../ai-tasks/index.js";
 
 type LoadedRun = Awaited<ReturnType<ReportService["loadRun"]>>;
 
@@ -284,6 +285,73 @@ export class ReportService {
           continue;
         }
 
+        if (question.type === "matrix_single_choice") {
+          const matrix = question.matrix;
+          if (!matrix) {
+            questionReports.push({
+              questionId: question.id,
+              title: question.title,
+              type: question.type,
+              matrixSingleChoice: { rows: [] },
+            });
+            continue;
+          }
+
+          const rows = matrix.rows.map((row) => {
+            const rowAnswers = answers.flatMap(({ identity, answer }) => {
+              const matrixAnswer = answer.matrixAnswers.find((item) => item.rowId === row.id);
+              return matrixAnswer ? [{ identity, selectedOptionIds: matrixAnswer.selectedOptionIds }] : [];
+            });
+            const responseCount = rowAnswers.length;
+
+            const columns = matrix.columns.map((column) => {
+              const count = rowAnswers.filter((item) => item.selectedOptionIds.includes(column.id)).length;
+              return {
+                columnId: column.id,
+                label: column.label,
+                count,
+                percentage: responseCount ? round((count / responseCount) * 100) : 0,
+              };
+            });
+
+            const groupedColumns = filters.groupBy
+              ? Object.fromEntries(
+                  matrix.columns.map((column) => [
+                    column.id,
+                    Array.from(grouped.entries()).map(([label, total]) => {
+                      const count = rowAnswers.filter((item) => {
+                        return getGroupInfo(item.identity, filters.groupBy).label === label && item.selectedOptionIds.includes(column.id);
+                      }).length;
+
+                      return {
+                        groupKey: label,
+                        groupLabel: label,
+                        count,
+                        percentage: total ? round((count / total) * 100) : 0,
+                      };
+                    }),
+                  ]),
+                )
+              : undefined;
+
+            return {
+              rowId: row.id,
+              rowLabel: row.label,
+              responses: responseCount,
+              columns,
+              groupedColumns,
+            };
+          });
+
+          questionReports.push({
+            questionId: question.id,
+            title: question.title,
+            type: question.type,
+            matrixSingleChoice: { rows },
+          });
+          continue;
+        }
+
         const openAnswers = answers.map(({ answer }) => answer.textAnswer ?? answer.otherText ?? "").filter(Boolean);
         let summary: string | undefined;
         let keywords: string[] = [];
@@ -291,13 +359,11 @@ export class ReportService {
         if (openAnswers.length > 0) {
           try {
             const config = await this.llmService.getRuntimeConfig(run.userId, run.llmConfigId);
+            const task = buildOpenTextSummaryTask({ questionTitle: question.title, answers: openAnswers });
             const openSummary = await this.llmService.generateJson<{ summary: string; keywords: string[] }>(
               config,
-              [
-                { role: "system", content: "Summarize open survey responses into JSON with summary and keywords." },
-                { role: "user", content: openAnswers.join("\n---\n") },
-              ],
-              'Return JSON: {"summary": string, "keywords": string[] }',
+              task.messages,
+              task.fixerPrompt,
             );
             summary = openSummary.summary;
             keywords = openSummary.keywords ?? [];

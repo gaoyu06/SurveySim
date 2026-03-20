@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { List, Tag, Typography } from "antd";
 import { apiClient } from "@/api/client";
+import { useI18n } from "@/i18n/I18nProvider";
 import { PageHeader, Panel } from "@/components/PageHeader";
 
 export function DashboardPage() {
+  const { t } = useI18n();
   const llmConfigs = useQuery({
     queryKey: ["llm-configs"],
     queryFn: () => apiClient.get<any[]>("/llm-configs"),
@@ -22,17 +24,17 @@ export function DashboardPage() {
   });
 
   const metrics = [
-    { label: "LLM configs", value: llmConfigs.data?.length ?? 0 },
-    { label: "Participant templates", value: templates.data?.length ?? 0 },
-    { label: "Surveys", value: surveys.data?.length ?? 0 },
-    { label: "Mock runs", value: runs.data?.length ?? 0 },
+    { label: t("dashboard.metricLlmConfigs"), value: llmConfigs.data?.length ?? 0 },
+    { label: t("dashboard.metricTemplates"), value: templates.data?.length ?? 0 },
+    { label: t("dashboard.metricSurveys"), value: surveys.data?.length ?? 0 },
+    { label: t("dashboard.metricMockRuns"), value: runs.data?.length ?? 0 },
   ];
 
   return (
     <>
       <PageHeader
-        title="Command deck"
-        subtitle="Track your synthetic research system at a glance, then jump directly into the next high-leverage workflow."
+        title={t("dashboard.title")}
+        subtitle={t("dashboard.subtitle")}
       />
       <div className="metric-grid" style={{ marginBottom: 18 }}>
         {metrics.map((metric) => (
@@ -44,47 +46,39 @@ export function DashboardPage() {
       </div>
       <div className="workspace-grid">
         <Panel>
-          <Typography.Title level={4}>Latest mock runs</Typography.Title>
+          <Typography.Title level={4}>{t("dashboard.latestRuns")}</Typography.Title>
           <List
+            locale={{ emptyText: t("dashboard.emptyRuns") }}
             dataSource={(runs.data ?? []).slice(0, 6)}
             renderItem={(item: any) => (
               <List.Item>
                 <List.Item.Meta
                   title={item.name}
-                  description={`Participants ${item.participantCount} · Responses ${item.progress?.responseCompleted ?? 0}`}
+                  description={t("dashboard.runDesc", {
+                    participants: item.participantCount,
+                    responses: item.progress?.responseCompleted ?? 0,
+                  })}
                 />
-                <Tag
-                  color={
-                    item.status === "completed"
-                      ? "green"
-                      : item.status === "failed"
-                        ? "red"
-                        : "gold"
-                  }
-                >
-                  {item.status}
-                </Tag>
+                <Tag color={item.status === "completed" ? "green" : item.status === "failed" ? "red" : "blue"}>{t(`status.${item.status}`)}</Tag>
               </List.Item>
             )}
           />
         </Panel>
-        <div className="card-stack">
-          <Panel>
-            <Typography.Title level={4}>System posture</Typography.Title>
-            <Typography.Paragraph style={{ color: "rgba(244,237,225,.72)" }}>
-              This MVP is optimized for local-first iteration: build population rules, review
-              extracted survey structure before persistence, and launch long-running mock batches
-              from the same workspace.
-            </Typography.Paragraph>
-          </Panel>
-          <Panel>
-            <Typography.Title level={4}>Recommended next step</Typography.Title>
-            <Typography.Paragraph style={{ color: "rgba(244,237,225,.72)" }}>
-              1. Create or test an LLM config. 2. Model a participant template. 3. Import a raw
-              survey and confirm the structure. 4. Start your first mock run.
-            </Typography.Paragraph>
-          </Panel>
-        </div>
+        <Panel>
+          <Typography.Title level={4}>{t("dashboard.latestSurveys")}</Typography.Title>
+          <List
+            locale={{ emptyText: t("dashboard.emptySurveys") }}
+            dataSource={(surveys.data ?? []).slice(0, 6)}
+            renderItem={(item: any) => (
+              <List.Item>
+                <List.Item.Meta
+                  title={item.title}
+                  description={t("dashboard.surveyDesc", { sections: item.schema?.sections?.length ?? 0 })}
+                />
+              </List.Item>
+            )}
+          />
+        </Panel>
       </div>
     </>
   );

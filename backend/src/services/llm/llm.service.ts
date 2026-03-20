@@ -109,9 +109,17 @@ export class LlmService {
     config: LlmRuntimeConfig,
     messages: ChatMessage[],
     fixerPrompt: string,
-    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => void,
+    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
   ) {
     return this.adapter.chatJsonWithEvents<T>(config, messages, fixerPrompt, onEvent);
+  }
+
+  async generateTextStream(
+    config: LlmRuntimeConfig,
+    messages: ChatMessage[],
+    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
+  ) {
+    return this.adapter.streamText(config, messages, onEvent);
   }
 
   async generateText(config: LlmRuntimeConfig, messages: ChatMessage[]) {

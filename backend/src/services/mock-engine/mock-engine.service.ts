@@ -14,6 +14,7 @@ import { fromJson, toJson } from "../../lib/json.js";
 import { LlmService } from "../llm/llm.service.js";
 import { ParticipantTemplateService } from "../participant-template.service.js";
 import { ReportService } from "../reporting/report.service.js";
+import { buildPersonaGenerateTask, buildSurveyResponseGenerateTask } from "../ai-tasks/index.js";
 import { toIsoString } from "../../utils/serialize.js";
 
 interface RunContext {
@@ -80,7 +81,13 @@ function interactiveQuestions(schema: SurveySchemaDto) {
 type InteractiveQuestion = ReturnType<typeof interactiveQuestions>[number];
 
 function hasMeaningfulAnswer(answer: StructuredAnswer) {
-  return Boolean(answer.selectedOptionIds.length || answer.otherText || answer.textAnswer || typeof answer.ratingValue === "number");
+  return Boolean(
+    answer.selectedOptionIds.length ||
+      answer.matrixAnswers.length ||
+      answer.otherText ||
+      answer.textAnswer ||
+      typeof answer.ratingValue === "number",
+  );
 }
 
 function normalizeNumberValue(value: unknown) {
@@ -154,6 +161,74 @@ function normalizeChoiceSelections(question: InteractiveQuestion, source: unknow
   return { selectedOptionIds, residualTexts };
 }
 
+function normalizeMatrixRowSelections(question: InteractiveQuestion, source: unknown) {
+  const matrix = question.matrix;
+  if (!matrix) return [];
+
+  const columnMap = new Map(
+    matrix.columns.map((column) => [column.id.toLowerCase(), column.id]),
+  );
+
+  const normalizeMatrixColumnId = (candidate: unknown) => {
+    const text = normalizeTextValue(candidate);
+    if (!text) return undefined;
+
+    const exact = matrix.columns.find((column) => column.id === text);
+    if (exact) return exact.id;
+
+    const lowered = text.toLowerCase();
+    const byId = columnMap.get(lowered);
+    if (byId) return byId;
+
+    const byLabel = matrix.columns.find(
+      (column) => column.label.toLowerCase() === lowered || column.value.toLowerCase() === lowered,
+    );
+    return byLabel?.id;
+  };
+
+  const rows = Array.isArray(source)
+    ? source
+    : source && typeof source === "object" && !Array.isArray(source)
+      ? Object.entries(source as Record<string, unknown>).map(([rowId, value]) => ({ rowId, selectedOptionIds: value }))
+      : [];
+
+  return rows
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return undefined;
+      const record = item as Record<string, unknown>;
+      const rowId = normalizeTextValue(record.rowId ?? record.id ?? record.row ?? record.rowKey);
+      if (!rowId) return undefined;
+
+      const selectionSource =
+        record.selectedOptionIds ??
+        record.selectedOptions ??
+        record.optionIds ??
+        record.optionId ??
+        record.selection ??
+        record.selections ??
+        record.choice ??
+        record.choices ??
+        record.value ??
+        record.answer;
+
+      const rawSelections = Array.isArray(selectionSource)
+        ? selectionSource
+        : selectionSource == null
+          ? []
+          : [selectionSource];
+
+      const selectedOptionIds = rawSelections
+        .map((candidate) => normalizeMatrixColumnId(candidate))
+        .filter((candidate): candidate is string => Boolean(candidate));
+
+      return {
+        rowId,
+        selectedOptionIds: Array.from(new Set(selectedOptionIds)),
+      };
+    })
+    .filter((item): item is { rowId: string; selectedOptionIds: string[] } => Boolean(item));
+}
+
 function normalizeAnswerItem(question: InteractiveQuestion | undefined, questionId: string, rawValue: unknown) {
   if (!question) {
     if (rawValue && typeof rawValue === "object" && !Array.isArray(rawValue)) {
@@ -193,6 +268,20 @@ function normalizeAnswerItem(question: InteractiveQuestion | undefined, question
         questionId,
         selectedOptionIds,
         otherText: explicitOtherText ?? (question.type.endsWith("_other") ? residualTexts.join("; ") || undefined : undefined),
+      };
+    }
+    case "matrix_single_choice": {
+      const matrixSource =
+        record?.matrixAnswers ??
+        record?.rows ??
+        record?.matrix ??
+        record?.answers ??
+        record?.response ??
+        rawValue;
+
+      return {
+        questionId,
+        matrixAnswers: normalizeMatrixRowSelections(question, matrixSource),
       };
     }
     case "rating": {
@@ -292,6 +381,38 @@ function validateAnswers(schema: SurveySchemaDto, rawPayload: unknown) {
         }
         if (question.validation?.maxSelections && answer.selectedOptionIds.length > question.validation.maxSelections) {
           throw new Error(`Question ${question.id} exceeds max selections`);
+        }
+        break;
+      }
+      case "matrix_single_choice": {
+        if (!question.matrix) throw new Error(`Question ${question.id} is missing matrix definition`);
+
+        const allowedRows = new Set(question.matrix.rows.map((row) => row.id));
+        const allowedColumns = new Set(question.matrix.columns.map((column) => column.id));
+        const seenRows = new Set<string>();
+
+        for (const rowAnswer of answer.matrixAnswers) {
+          if (!allowedRows.has(rowAnswer.rowId)) {
+            throw new Error(`Question ${question.id} has unknown rowId ${rowAnswer.rowId}`);
+          }
+          if (seenRows.has(rowAnswer.rowId)) {
+            throw new Error(`Question ${question.id} has duplicate matrix answer for row ${rowAnswer.rowId}`);
+          }
+          seenRows.add(rowAnswer.rowId);
+
+          if (rowAnswer.selectedOptionIds.length !== 1) {
+            throw new Error(`Question ${question.id} row ${rowAnswer.rowId} must select exactly one column`);
+          }
+
+          for (const columnId of rowAnswer.selectedOptionIds) {
+            if (!allowedColumns.has(columnId)) {
+              throw new Error(`Question ${question.id} row ${rowAnswer.rowId} has unknown columnId ${columnId}`);
+            }
+          }
+        }
+
+        if (question.required && seenRows.size !== question.matrix.rows.length) {
+          throw new Error(`Question ${question.id} requires one answer for every matrix row`);
         }
         break;
       }
@@ -619,20 +740,15 @@ export class MockEngineService {
 
     const identity = fromJson<ParticipantIdentity>(participant.identity);
     try {
+      const task = buildPersonaGenerateTask({
+        identity,
+        surveyTitle: surveySchema.survey.title,
+        extraRespondentPrompt,
+      });
       const result = await this.llmService.generateJson<{ personaPrompt: string; traits: string[]; guardrails: string[] }>(
         { ...config, temperature: Math.max(config.temperature, 0.9) },
-        [
-          {
-            role: "system",
-            content:
-              "You generate vivid but bounded respondent personas. Keep them consistent with the identity. Include subtle inconsistency, life details, speaking style, and realistic imperfections. Return JSON only.",
-          },
-          {
-            role: "user",
-            content: JSON.stringify({ identity, surveyTitle: surveySchema.survey.title, extraRespondentPrompt }),
-          },
-        ],
-        'Return JSON: {"personaPrompt": string, "traits": string[], "guardrails": string[] }',
+        task.messages,
+        task.fixerPrompt,
       );
       const personaPrompt = normalizePersonaPrompt(result);
       if (!personaPrompt) {
@@ -682,28 +798,20 @@ export class MockEngineService {
 
     const identity = fromJson<ParticipantIdentity>(participant.identity);
 
-    const promptPayload = {
-      survey: surveySchema,
-      identity,
-      personaPrompt: participant.personaProfile.promptText,
-      respondentInstructions: surveySchema.survey.respondentInstructions,
-      extraRespondentPrompt: prompts.extraRespondentPrompt,
-      answeringRules: [
-        "Return JSON only with key answers.",
-        "Use questionId and exact option ids.",
-        "No explanations outside JSON.",
-      ],
-    };
-
     let raw: unknown = null;
     try {
+      const task = buildSurveyResponseGenerateTask({
+        survey: surveySchema,
+        identity,
+        personaPrompt: participant.personaProfile.promptText,
+        respondentInstructions: surveySchema.survey.respondentInstructions,
+        extraSystemPrompt: prompts.extraSystemPrompt,
+        extraRespondentPrompt: prompts.extraRespondentPrompt,
+      });
       raw = await this.llmService.generateJson<{ answers: StructuredAnswer[] }>(
         config,
-        [
-          { role: "system", content: `You simulate a survey respondent. ${prompts.extraSystemPrompt ?? ""}`.trim() },
-          { role: "user", content: JSON.stringify(promptPayload) },
-        ],
-        'Return JSON: {"answers": [{"questionId": string, "selectedOptionIds": string[], "otherText": string?, "ratingValue": number?, "textAnswer": string?}] }',
+        task.messages,
+        task.fixerPrompt,
       );
 
       const normalizedAnswers = validateAnswers(surveySchema, raw);

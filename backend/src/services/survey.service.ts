@@ -1,147 +1,56 @@
-import { randomUUID } from "node:crypto";
-import { surveyImportInputSchema, surveySaveInputSchema, surveySchema, type SurveyDraft, type SurveyImportStreamEvent, type SurveySchemaDto } from "@formagents/shared";
+import {
+  applySurveyImportRecordToDraft,
+  createEmptySurveyDraft,
+  ensureSurveySchemaIds,
+  finalizeSurveyDraft,
+  surveyImportInputSchema,
+  surveyImportJsonlRecordSchema,
+  surveyImportRetryRecordInputSchema,
+  surveySaveInputSchema,
+  type SurveyDraft,
+  type SurveyImportJsonlRecord,
+  type SurveyImportRecordEvent,
+  type SurveyImportStreamEvent,
+  type SurveySchemaDto,
+} from "@formagents/shared";
 import { fromJson } from "../lib/json.js";
-import { llmConfigRepository } from "../repositories/llm-config.repository.js";
 import { surveyRepository } from "../repositories/survey.repository.js";
 import { LlmService } from "./llm/llm.service.js";
+import { buildSurveyExtractJsonlTask, buildSurveyRepairJsonlRecordTask } from "./ai-tasks/index.js";
 import { toIsoString } from "../utils/serialize.js";
 
-function ensureSchemaIds(schema: SurveySchemaDto): SurveySchemaDto {
+function summarizeRecord(record: SurveyImportJsonlRecord) {
+  if (record.recordType === "survey_meta") {
+    return `survey_meta · ${record.title}`;
+  }
+
+  if (record.recordType === "section") {
+    return `section · ${record.title}`;
+  }
+
+  return `question · ${record.type} · ${record.title}`;
+}
+
+function toRecordEvent(
+  index: number,
+  status: SurveyImportRecordEvent["status"],
+  rawLine: string,
+  record?: SurveyImportJsonlRecord,
+  message?: string,
+  repairedLine?: string,
+): SurveyImportRecordEvent {
   return {
-    survey: schema.survey,
-    sections: schema.sections.map((section, sectionIndex) => ({
-      ...section,
-      id: section.id || `section_${sectionIndex + 1}_${randomUUID().slice(0, 8)}`,
-      displayOrder: section.displayOrder ?? sectionIndex,
-      questions: section.questions.map((question, questionIndex) => ({
-        ...question,
-        id: question.id || `question_${sectionIndex + 1}_${questionIndex + 1}_${randomUUID().slice(0, 8)}`,
-        displayOrder: question.displayOrder ?? questionIndex,
-        options: question.options.map((option, optionIndex) => ({
-          ...option,
-          id: option.id || `option_${questionIndex + 1}_${optionIndex + 1}_${randomUUID().slice(0, 8)}`,
-          displayOrder: option.displayOrder ?? optionIndex,
-          value: option.value || option.label,
-        })),
-      })),
-    })),
-  };
-}
-
-function pickSchemaCandidate(payload: any) {
-  const candidates = [payload?.schema, payload?.surveySchema, payload?.data, payload];
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const normalizedCandidate = typeof candidate === "string" ? JSON.parse(candidate) : candidate;
-    if (normalizedCandidate.survey || normalizedCandidate.sections || Array.isArray(normalizedCandidate)) {
-      return normalizedCandidate;
-    }
-  }
-  return payload?.schema ?? payload;
-}
-
-function createLooseSection(title: string, displayOrder: number) {
-  return {
-    id: `section_${displayOrder + 1}_${randomUUID().slice(0, 8)}`,
-    title,
-    displayOrder,
-    questions: [] as Array<SurveySchemaDto["sections"][number]["questions"][number]>,
-  };
-}
-
-function toLooseOption(option: any, displayOrder: number) {
-  return {
-    id: option?.id ?? `option_${displayOrder + 1}_${randomUUID().slice(0, 8)}`,
-    label: option?.label ?? option?.text ?? option?.value ?? `Option ${displayOrder + 1}`,
-    value: option?.value ?? option?.label ?? option?.text ?? `Option ${displayOrder + 1}`,
-    displayOrder,
-    allowOther: option?.allowOther ?? false,
-  };
-}
-
-function toValidation(item: any) {
-  if (item?.validation) {
-    return item.validation;
-  }
-  if (item?.scale) {
-    return {
-      minRating: item.scale.min,
-      maxRating: item.scale.max,
-    };
-  }
-  return undefined;
-}
-
-function normalizeLooseSchema(candidate: any, fallbackTitle?: string): SurveySchemaDto {
-  const normalizedCandidate = typeof candidate === "string" ? JSON.parse(candidate) : candidate;
-
-  if (normalizedCandidate?.survey || normalizedCandidate?.sections) {
-    return normalizedCandidate as SurveySchemaDto;
-  }
-
-  const items = Array.isArray(normalizedCandidate)
-    ? normalizedCandidate
-    : Array.isArray(normalizedCandidate?.schema)
-      ? normalizedCandidate.schema
-      : Array.isArray(normalizedCandidate?.items)
-        ? normalizedCandidate.items
-        : [];
-
-  const inferredTitle = normalizedCandidate?.title ?? normalizedCandidate?.surveyTitle ?? fallbackTitle;
-  const respondentInstructionTexts: string[] = [];
-  const standaloneSectionTitles = items.filter((item: any) => item?.type === "section_title").map((item: any) => item?.title ?? item?.text).filter(Boolean);
-  const sections: SurveySchemaDto["sections"] = [];
-  let currentSection = createLooseSection(standaloneSectionTitles.length > 1 ? standaloneSectionTitles[1] : "Section 1", 0);
-  let consumedTitleFromSection = false;
-
-  for (const item of items) {
-    if (!item || typeof item !== "object") continue;
-    const type = item.type;
-    const text = item.title ?? item.text ?? item.label ?? "";
-
-    if (type === "section_title") {
-      if (!consumedTitleFromSection && !fallbackTitle && sections.length === 0 && currentSection.questions.length === 0) {
-        consumedTitleFromSection = true;
-        continue;
-      }
-
-      if (currentSection.questions.length > 0) {
-        sections.push(currentSection);
-      }
-      currentSection = createLooseSection(text || `Section ${sections.length + 1}`, sections.length);
-      continue;
-    }
-
-    if (type === "respondent_instruction" && sections.length === 0 && currentSection.questions.length === 0) {
-      respondentInstructionTexts.push(text);
-      continue;
-    }
-
-    currentSection.questions.push({
-      id: item.id ?? `question_${randomUUID().slice(0, 8)}`,
-      code: item.code,
-      type,
-      title: text || "Untitled question",
-      description: item.description,
-      required: item.required ?? false,
-      displayOrder: currentSection.questions.length,
-      respondentInstructions: item.respondentInstructions,
-      options: Array.isArray(item.options) ? item.options.map((option: any, optionIndex: number) => toLooseOption(option, optionIndex)) : [],
-      validation: toValidation(item),
-    });
-  }
-
-  if (currentSection.questions.length > 0 || sections.length === 0) {
-    sections.push(currentSection);
-  }
-
-  return {
-    survey: {
-      title: inferredTitle ?? standaloneSectionTitles[0] ?? "Imported Survey",
-      respondentInstructions: respondentInstructionTexts.join("\n") || undefined,
-      language: normalizedCandidate?.language ?? normalizedCandidate?.survey?.language ?? "auto",
-    },
-    sections,
+    type: "record",
+    index,
+    status,
+    record,
+    recordType: record?.recordType,
+    questionType: record?.recordType === "question" ? record.type : undefined,
+    title: record?.title,
+    summary: record ? summarizeRecord(record) : undefined,
+    rawLine,
+    repairedLine,
+    message,
   };
 }
 
@@ -160,6 +69,34 @@ function mapSurvey(survey: any) {
 export class SurveyService {
   private readonly llmService = new LlmService();
 
+  async retryImportRecord(userId: string, input: unknown): Promise<SurveyImportRecordEvent> {
+    const payload = surveyImportRetryRecordInputSchema.parse(input);
+    const config = payload.llmConfigId
+      ? await this.llmService.getRuntimeConfig(userId, payload.llmConfigId)
+      : await this.llmService.getDefaultRuntimeConfig(userId);
+
+    const repairTask = buildSurveyRepairJsonlRecordTask({
+      rawText: payload.rawText,
+      invalidLine: payload.invalidLine,
+      errorMessage: payload.errorMessage ?? "Manual retry requested",
+    });
+
+    const repaired = await this.llmService.generateJson<SurveyImportJsonlRecord>(
+      config,
+      repairTask.messages,
+      repairTask.fixerPrompt,
+    );
+    const record = surveyImportJsonlRecordSchema.parse(repaired);
+    return toRecordEvent(
+      payload.index,
+      "repaired",
+      payload.invalidLine,
+      record,
+      payload.errorMessage ?? "Manual retry succeeded",
+      JSON.stringify(repaired),
+    );
+  }
+
   async list(userId: string) {
     const surveys = await surveyRepository.list(userId);
     return surveys.map((survey) => mapSurvey(survey));
@@ -172,167 +109,147 @@ export class SurveyService {
   }
 
   async importDraft(userId: string, input: unknown): Promise<SurveyDraft> {
-    const payload = surveyImportInputSchema.parse(input);
-    const config = payload.llmConfigId
-      ? await this.llmService.getRuntimeConfig(userId, payload.llmConfigId)
-      : await this.llmService.getDefaultRuntimeConfig(userId);
-
-    const llmResult = await this.llmService.generateJson<any>(
-      config,
-      [
-        {
-          role: "system",
-          content: [
-            "You are a survey structure extraction engine.",
-            "Convert raw questionnaire text into strict JSON.",
-            "Keep original language.",
-            "Use question types: single_choice, multi_choice, single_choice_other, multi_choice_other, rating, open_text, paragraph, section_title, respondent_instruction.",
-            "Every question and option must include stable ids.",
-            "Return JSON only with keys: rawText, schema, extractionNotes.",
-          ].join(" "),
-        },
-        {
-          role: "user",
-          content: `Raw survey content:
-${payload.rawText}`,
-        },
-      ],
-      "Return valid JSON for the survey draft only.",
-    );
-
-    const normalized = {
-      rawText: payload.rawText,
-      schema: ensureSchemaIds(surveySchema.parse(normalizeLooseSchema(pickSchemaCandidate(llmResult), payload.title))),
-      extractionNotes: llmResult.extractionNotes ?? llmResult.notes ?? [],
-    };
-
-    return normalized;
+    let finalDraft: SurveyDraft | null = null;
+    for await (const event of this.importDraftStream(userId, input)) {
+      if (event.type === "draft") {
+        finalDraft = event.draft;
+      }
+    }
+    if (!finalDraft) {
+      throw new Error("Survey draft extraction did not produce a draft");
+    }
+    return finalDraft;
   }
 
   async *importDraftStream(userId: string, input: unknown): AsyncGenerator<SurveyImportStreamEvent> {
-    yield {
-      type: "status",
-      stage: "queued",
-      message: "Survey extraction queued",
-    };
+    yield { type: "status", stage: "queued", message: "Survey extraction queued" };
 
     const payload = surveyImportInputSchema.parse(input);
     const config = payload.llmConfigId
       ? await this.llmService.getRuntimeConfig(userId, payload.llmConfigId)
       : await this.llmService.getDefaultRuntimeConfig(userId);
 
-    yield {
-      type: "status",
-      stage: "extracting",
-      message: "Calling LLM to extract questionnaire structure",
-    };
-
+    let draft = createEmptySurveyDraft(payload.rawText, payload.title);
     const queue: SurveyImportStreamEvent[] = [];
-    let resolveNext: (() => void) | null = null;
-    let settled = false;
-    let failure: Error | null = null;
-    let llmResult: any;
+    let wake: (() => void) | null = null;
+    let failed: Error | null = null;
+    let finished = false;
+    let lineNumber = 0;
+    let buffer = "";
 
     const push = (event: SurveyImportStreamEvent) => {
       queue.push(event);
-      resolveNext?.();
-      resolveNext = null;
+      wake?.();
+      wake = null;
     };
 
-    const task = this.llmService
-      .generateJsonWithEvents<any>(
-        config,
-        [
-          {
-            role: "system",
-            content: [
-              "You are a survey structure extraction engine.",
-              "Convert raw questionnaire text into strict JSON.",
-              "Keep original language.",
-              "Use question types: single_choice, multi_choice, single_choice_other, multi_choice_other, rating, open_text, paragraph, section_title, respondent_instruction.",
-              "Every question and option must include stable ids.",
-              "Return JSON only with keys: rawText, schema, extractionNotes.",
-            ].join(" "),
-          },
-          {
-            role: "user",
-            content: `Raw survey content:
-${payload.rawText}`,
-          },
-        ],
-        "Return valid JSON for the survey draft only.",
-        (event) => {
-          if (event.type === "delta" && event.chunk) {
-            push({
-              type: "delta",
-              chunk: event.chunk,
-            });
+    const processJsonlLine = async (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+
+      lineNumber += 1;
+      push({ type: "status", stage: "validating", message: `Validating JSONL record ${lineNumber}` });
+
+      let record: SurveyImportJsonlRecord;
+      try {
+        record = surveyImportJsonlRecordSchema.parse(JSON.parse(trimmed));
+        push(toRecordEvent(lineNumber, "validated", trimmed, record, `Record ${lineNumber} validated`));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        draft.extractionNotes.push(`Record ${lineNumber} repair attempted: ${message}`);
+        push({ type: "status", stage: "repairing", message: `Record ${lineNumber} invalid, repairing with LLM` });
+        try {
+          const retried = await this.retryImportRecord(userId, {
+            rawText: payload.rawText,
+            invalidLine: trimmed,
+            errorMessage: message,
+            llmConfigId: payload.llmConfigId,
+            index: lineNumber,
+          });
+          push(retried);
+          record = surveyImportJsonlRecordSchema.parse(JSON.parse(retried.repairedLine!));
+        } catch (repairError) {
+          const repairMessage = repairError instanceof Error ? repairError.message : String(repairError);
+          draft.extractionNotes.push(`Record ${lineNumber} skipped after repair failure: ${repairMessage}`);
+          push(toRecordEvent(lineNumber, "skipped", trimmed, undefined, repairMessage));
+          return;
+        }
+      }
+
+      draft = applySurveyImportRecordToDraft(draft, record);
+    };
+
+    push({ type: "status", stage: "extracting", message: "Streaming questionnaire JSONL records from LLM" });
+    const extractTask = buildSurveyExtractJsonlTask({ rawText: payload.rawText, title: payload.title });
+
+    const streamTask = this.llmService
+      .generateTextStream(config, extractTask.messages, async (event) => {
+          if (event.type === "status" && event.message) {
             return;
           }
 
-          if (event.type === "status" && event.message) {
-            push({
-              type: "status",
-              stage: "repairing",
-              message: event.message,
-            });
+          if (event.type === "delta" && event.chunk) {
+            push({ type: "delta", chunk: event.chunk });
+            buffer += event.chunk;
+
+            const parts = buffer.split(/\r?\n/);
+            buffer = parts.pop() ?? "";
+
+            for (const line of parts) {
+              await processJsonlLine(line);
+            }
           }
-        },
-      )
-      .then((result) => {
-        llmResult = result;
+        })
+      .then(async () => {
+        if (buffer.trim()) {
+          await processJsonlLine(buffer);
+        }
+        return null;
       })
       .catch((error) => {
-        failure = error instanceof Error ? error : new Error(String(error));
+        return error instanceof Error ? error : new Error(String(error));
       })
       .finally(() => {
-        settled = true;
-        resolveNext?.();
-        resolveNext = null;
+        finished = true;
+        wake?.();
+        wake = null;
       });
 
-    while (!settled || queue.length > 0) {
-      if (queue.length === 0) {
+    while (!finished || queue.length > 0) {
+      if (!queue.length) {
         await new Promise<void>((resolve) => {
-          resolveNext = resolve;
+          wake = resolve;
         });
         continue;
       }
       yield queue.shift()!;
     }
 
-    await task;
+    const failure = await streamTask;
     if (failure) {
+      if (lineNumber > 0) {
+        draft.extractionNotes.push(`Extraction interrupted after ${lineNumber} records: ${failure.message}`);
+        yield { type: "status", stage: "normalizing", message: "Normalizing validated JSONL records before interruption" };
+        yield { type: "draft", draft: finalizeSurveyDraft(draft, payload.title) };
+      }
+      yield {
+        type: "status",
+        stage: "interrupted",
+        message: lineNumber > 0 ? `Extraction interrupted after ${lineNumber} records: ${failure.message}` : failure.message,
+      };
       throw failure;
     }
 
-    yield {
-      type: "status",
-      stage: "normalizing",
-      message: "Normalizing extracted schema",
-    };
+    yield { type: "status", stage: "normalizing", message: "Normalizing validated JSONL records into survey schema" };
 
-    const draft = {
-      rawText: payload.rawText,
-      schema: ensureSchemaIds(surveySchema.parse(normalizeLooseSchema(pickSchemaCandidate(llmResult), payload.title))),
-      extractionNotes: llmResult.extractionNotes ?? llmResult.notes ?? [],
-    };
-
-    yield {
-      type: "draft",
-      draft,
-    };
-
-    yield {
-      type: "status",
-      stage: "completed",
-      message: "Extraction completed. Review and edit before saving.",
-    };
+    const finalDraft = finalizeSurveyDraft(draft, payload.title);
+    yield { type: "draft", draft: finalDraft };
+    yield { type: "status", stage: "completed", message: "Extraction completed. Review and edit before saving." };
   }
 
   async create(userId: string, input: unknown) {
     const payload = surveySaveInputSchema.parse(input);
-    const normalized = { ...payload, schema: ensureSchemaIds(surveySchema.parse(payload.schema)) };
+    const normalized = { ...payload, schema: ensureSurveySchemaIds(payload.schema) };
     const created = await surveyRepository.create(userId, normalized);
     return mapSurvey(created);
   }
@@ -341,7 +258,7 @@ ${payload.rawText}`,
     const payload = surveySaveInputSchema.parse(input);
     const existing = await surveyRepository.getById(userId, id);
     if (!existing) throw new Error("Survey not found");
-    const normalized = { ...payload, schema: ensureSchemaIds(surveySchema.parse(payload.schema)) };
+    const normalized = { ...payload, schema: ensureSurveySchemaIds(payload.schema) };
     const updated = await surveyRepository.update(userId, id, normalized);
     return mapSurvey(updated);
   }

@@ -13,6 +13,7 @@ import { SurveysPage } from "@/pages/SurveysPage";
 import { MockRunsPage } from "@/pages/MockRunsPage";
 import { MockRunDetailPage } from "@/pages/MockRunDetailPage";
 import { ReportsPage } from "@/pages/ReportsPage";
+import { useI18n } from "@/i18n/I18nProvider";
 
 function ProtectedLayout() {
   const token = authStore((state) => state.token);
@@ -52,6 +53,7 @@ function ProtectedLayout() {
 }
 
 export function AppRoutes() {
+  const { t } = useI18n();
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -64,7 +66,7 @@ export function AppRoutes() {
         <Route path="mock-runs/:id" element={<MockRunDetailPage />} />
         <Route path="reports" element={<ReportsPage />} />
       </Route>
-      <Route path="*" element={<Result status="404" title="404" subTitle="Page not found" />} />
+      <Route path="*" element={<Result status="404" title="404" subTitle={t("routes.notFound")} />} />
     </Routes>
   );
 }

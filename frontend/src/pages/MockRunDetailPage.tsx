@@ -5,11 +5,13 @@ import { useMemo, useState, type Key } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "@/api/client";
 import { PageHeader, Panel } from "@/components/PageHeader";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export function MockRunDetailPage() {
   const { id = "" } = useParams();
   const { message } = App.useApp();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<Key[]>([]);
 
   const runQuery = useQuery({
@@ -24,7 +26,7 @@ export function MockRunDetailPage() {
         participantIds: selectedParticipantIds,
       }),
     onSuccess: () => {
-      message.success("Participants queued for retry");
+      message.success(t("mockRunDetail.retryQueued"));
       queryClient.invalidateQueries({ queryKey: ["mock-run", id] });
     },
     onError: (error: Error) => message.error(error.message),
@@ -39,12 +41,12 @@ export function MockRunDetailPage() {
   return (
     <>
       <PageHeader
-        title={runQuery.data?.name ?? "Mock run detail"}
-        subtitle="Observe stage-level progress, inspect participant-level failures, and selectively rerun broken personas or responses."
+        title={runQuery.data?.name ?? t("mockRunDetail.titleFallback")}
+        subtitle={t("mockRunDetail.subtitle")}
         actions={
           <Space>
             <Button onClick={() => queryClient.invalidateQueries({ queryKey: ["mock-run", id] })}>
-              Refresh
+              {t("common.refresh")}
             </Button>
             <Button
               icon={<ReloadOutlined />}
@@ -52,7 +54,7 @@ export function MockRunDetailPage() {
               disabled={selectedParticipantIds.length === 0}
               onClick={() => retryMutation.mutate()}
             >
-              Retry selected
+              {t("mockRunDetail.retrySelected")}
             </Button>
           </Space>
         }
@@ -60,15 +62,15 @@ export function MockRunDetailPage() {
       <div className="workspace-grid">
         <div className="card-stack">
           <Panel>
-            <Typography.Title level={4}>Overall progress</Typography.Title>
+            <Typography.Title level={4}>{t("mockRunDetail.overallProgress")}</Typography.Title>
             <Progress percent={percent} status={runQuery.data?.status === "failed" ? "exception" : "active"} />
             <List
               dataSource={[
-                ["Identity completed", runQuery.data?.progress?.identityCompleted ?? 0],
-                ["Persona completed", runQuery.data?.progress?.personaCompleted ?? 0],
-                ["Responses completed", runQuery.data?.progress?.responseCompleted ?? 0],
-                ["Failures", runQuery.data?.progress?.failed ?? 0],
-                ["Canceled", runQuery.data?.progress?.canceled ?? 0],
+                [t("mockRunDetail.identityCompleted"), runQuery.data?.progress?.identityCompleted ?? 0],
+                [t("mockRunDetail.personaCompleted"), runQuery.data?.progress?.personaCompleted ?? 0],
+                [t("mockRunDetail.responsesCompleted"), runQuery.data?.progress?.responseCompleted ?? 0],
+                [t("mockRunDetail.failures"), runQuery.data?.progress?.failed ?? 0],
+                [t("mockRunDetail.canceled"), runQuery.data?.progress?.canceled ?? 0],
               ]}
               renderItem={(item) => (
                 <List.Item>
@@ -79,7 +81,7 @@ export function MockRunDetailPage() {
             />
           </Panel>
           <Panel>
-            <Typography.Title level={4}>Execution log</Typography.Title>
+            <Typography.Title level={4}>{t("mockRunDetail.executionLog")}</Typography.Title>
             <List
               size="small"
               dataSource={runQuery.data?.logs ?? []}
@@ -95,7 +97,7 @@ export function MockRunDetailPage() {
           </Panel>
         </div>
         <Panel>
-          <Typography.Title level={4}>Participants</Typography.Title>
+          <Typography.Title level={4}>{t("mockRunDetail.participants")}</Typography.Title>
           <Table
             rowKey="id"
             rowSelection={{
@@ -106,15 +108,15 @@ export function MockRunDetailPage() {
             pagination={{ pageSize: 10 }}
             columns={[
               { title: "#", dataIndex: "ordinal", width: 72 },
-              { title: "Status", dataIndex: "status" },
-              { title: "Persona", dataIndex: "personaStatus" },
-              { title: "Response", dataIndex: "responseStatus" },
+              { title: t("common.status"), dataIndex: "status" },
+              { title: t("mockRunDetail.persona"), dataIndex: "personaStatus" },
+              { title: t("mockRunDetail.response"), dataIndex: "responseStatus" },
               {
-                title: "Identity",
+                title: t("mockRunDetail.identity"),
                 render: (_: unknown, item: any) => JSON.stringify(item.identity),
               },
               {
-                title: "Error",
+                title: t("mockRunDetail.error"),
                 dataIndex: "errorMessage",
                 ellipsis: true,
               },

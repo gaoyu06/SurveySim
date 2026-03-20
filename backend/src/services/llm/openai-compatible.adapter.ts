@@ -62,6 +62,11 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isAbortTimeoutError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  return error.name === "AbortError" || /timeout/i.test(error.message);
+}
+
 export class OpenAiCompatibleAdapter {
   async chatText(config: LlmRuntimeConfig, messages: ChatMessage[], overrides?: Partial<Pick<LlmRuntimeConfig, "temperature" | "maxTokens" | "timeoutMs">>) {
     const attempts = Math.max(1, (config.retryCount ?? 0) + 1);
@@ -137,7 +142,7 @@ export class OpenAiCompatibleAdapter {
     config: LlmRuntimeConfig,
     messages: ChatMessage[],
     fixerPrompt: string | undefined,
-    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => void,
+    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
   ): Promise<T> {
     const raw = await this.chatTextStream(config, messages, onEvent);
     const parsed = this.tryParse<T>(raw);
@@ -183,19 +188,34 @@ export class OpenAiCompatibleAdapter {
     return this.tryParse<{ ok: boolean; message?: string }>(text).ok;
   }
 
+  async streamText(
+    config: LlmRuntimeConfig,
+    messages: ChatMessage[],
+    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
+  ) {
+    return this.chatTextStream(config, messages, onEvent);
+  }
+
   private async chatTextStream(
     config: LlmRuntimeConfig,
     messages: ChatMessage[],
-    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => void,
+    onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
   ) {
     const attempts = Math.max(1, (config.retryCount ?? 0) + 1);
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(new Error("Timeout")), config.timeoutMs);
+      let idleTimeout: ReturnType<typeof setTimeout> | null = null;
+      const resetIdleTimeout = () => {
+        if (idleTimeout) {
+          clearTimeout(idleTimeout);
+        }
+        idleTimeout = setTimeout(() => controller.abort(new Error(`Stream idle timeout after ${config.timeoutMs}ms`)), config.timeoutMs);
+      };
 
       try {
+        resetIdleTimeout();
         const response = await fetch(normalizeBaseUrl(config.baseUrl), {
           method: "POST",
           headers: {
@@ -224,6 +244,7 @@ export class OpenAiCompatibleAdapter {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          resetIdleTimeout();
           buffer += decoder.decode(value, { stream: true });
 
           const events = buffer.split("\n\n");
@@ -242,8 +263,9 @@ export class OpenAiCompatibleAdapter {
               const payload = JSON.parse(data) as StreamChunkResponse;
               const text = extractTextContent(payload.choices?.[0]?.delta?.content);
               if (!text) continue;
+              resetIdleTimeout();
               output += text;
-              onEvent?.({ type: "delta", chunk: text });
+              await onEvent?.({ type: "delta", chunk: text });
             }
           }
         }
@@ -256,13 +278,19 @@ export class OpenAiCompatibleAdapter {
       } catch (error) {
         lastError = error;
         if (attempt >= attempts) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = isAbortTimeoutError(error)
+            ? `Stream idle timeout after ${config.timeoutMs}ms`
+            : error instanceof Error
+              ? error.message
+              : String(error);
           throw new Error(`LLM request failed after ${attempts} attempt(s): ${message}`);
         }
-        onEvent?.({ type: "status", message: `Streaming attempt ${attempt} failed, retrying` });
+        await onEvent?.({ type: "status", message: `Streaming attempt ${attempt} failed, retrying` });
         await wait(Math.min(3000, 400 * attempt));
       } finally {
-        clearTimeout(timeout);
+        if (idleTimeout) {
+          clearTimeout(idleTimeout);
+        }
       }
     }
 

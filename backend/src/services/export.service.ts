@@ -28,6 +28,7 @@ export class ExportService {
         personaPrompt: participant.personaPrompt,
         questionId: answer.questionId,
         selectedOptionIds: answer.selectedOptionIds.join("|"),
+        matrixAnswers: answer.matrixAnswers.map((row) => `${row.rowId}:${row.selectedOptionIds.join("|")}`).join(";"),
         otherText: answer.otherText ?? "",
         ratingValue: answer.ratingValue ?? "",
         textAnswer: answer.textAnswer ?? "",

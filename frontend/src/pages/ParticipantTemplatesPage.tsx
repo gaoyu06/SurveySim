@@ -1,12 +1,13 @@
 import { CopyOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Empty, Form, Input, InputNumber, List, Select, Space, Typography } from "antd";
+import { App, Button, Empty, Form, Input, InputNumber, List, Select, Space, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import type { ParticipantRuleInput, ParticipantTemplateDto, TemplatePreview } from "@formagents/shared";
+import { ATTRIBUTE_KEYS, type ParticipantRuleInput, type ParticipantTemplateDto, type TemplatePreview } from "@formagents/shared";
 import { apiClient } from "@/api/client";
 import { SimpleChart } from "@/components/charts/SimpleChart";
 import { RuleBuilder } from "@/components/forms/RuleBuilder";
 import { PageHeader, Panel } from "@/components/PageHeader";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type TemplateDraft = {
   template: {
@@ -42,6 +43,18 @@ const defaultDraft: TemplateDraft = {
   ],
 };
 
+const builtinDimensions = ATTRIBUTE_KEYS.filter((item) => item !== "noise");
+
+function normalizeDimensions(dimensions: string[]) {
+  return Array.from(
+    new Set(
+      dimensions
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 function toDraft(template: ParticipantTemplateDto): TemplateDraft {
   return {
     template: {
@@ -64,8 +77,10 @@ function toDraft(template: ParticipantTemplateDto): TemplateDraft {
 export function ParticipantTemplatesPage() {
   const queryClient = useQueryClient();
   const { message } = App.useApp();
+  const { t } = useI18n();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft>(defaultDraft);
+  const [newDimension, setNewDimension] = useState("");
 
   const templatesQuery = useQuery({
     queryKey: ["templates"],
@@ -97,7 +112,7 @@ export function ParticipantTemplatesPage() {
         ? apiClient.put<ParticipantTemplateDto>(`/participant-templates/${selectedId}`, draft)
         : apiClient.post<ParticipantTemplateDto>("/participant-templates", draft),
     onSuccess: (result) => {
-      message.success(selectedId ? "Template updated" : "Template created");
+      message.success(selectedId ? t("templates.templateUpdated") : t("templates.templateCreated"));
       setSelectedId(result.id);
       queryClient.invalidateQueries({ queryKey: ["templates"] });
       queryClient.invalidateQueries({ queryKey: ["template-preview", result.id] });
@@ -108,7 +123,7 @@ export function ParticipantTemplatesPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/participant-templates/${id}`),
     onSuccess: () => {
-      message.success("Template deleted");
+      message.success(t("templates.templateDeleted"));
       setSelectedId(null);
       setDraft(defaultDraft);
       queryClient.invalidateQueries({ queryKey: ["templates"] });
@@ -123,22 +138,22 @@ export function ParticipantTemplatesPage() {
     const [name, items] = firstEntry;
     return {
       title: {
-        text: `${name} distribution`,
+        text: `${t(`attributes.${name}`)} distribution`,
         left: "center",
-        textStyle: { color: "#f4ede1", fontFamily: "Fraunces, serif" },
+        textStyle: { color: "#f8fafc", fontFamily: "Fraunces, serif" },
       },
       tooltip: {},
-      xAxis: { type: "category", data: items.map((item) => item.label), axisLabel: { color: "#f4ede1" } },
-      yAxis: { type: "value", axisLabel: { color: "#f4ede1" } },
+      xAxis: { type: "category", data: items.map((item) => item.label), axisLabel: { color: "#f8fafc" } },
+      yAxis: { type: "value", axisLabel: { color: "#f8fafc" } },
       series: [
         {
           type: "bar",
           data: items.map((item) => item.count),
-          itemStyle: { color: "#d7b98f", borderRadius: [6, 6, 0, 0] },
+          itemStyle: { color: "#3b82f6", borderRadius: [6, 6, 0, 0] },
         },
       ],
     };
-  }, [previewQuery.data]);
+  }, [previewQuery.data, t]);
 
   const pieOptions = useMemo(() => {
     const distributions = previewQuery.data?.attributeDistributions ?? {};
@@ -147,12 +162,12 @@ export function ParticipantTemplatesPage() {
     const [name, items] = firstEntry;
     return {
       title: {
-        text: `${name} share`,
+        text: `${t(`attributes.${name}`)} share`,
         left: "center",
-        textStyle: { color: "#f4ede1", fontFamily: "Fraunces, serif" },
+        textStyle: { color: "#f8fafc", fontFamily: "Fraunces, serif" },
       },
       tooltip: { trigger: "item" },
-      legend: { bottom: 0, textStyle: { color: "#f4ede1" } },
+      legend: { bottom: 0, textStyle: { color: "#f8fafc" } },
       series: [
         {
           type: "pie",
@@ -161,13 +176,36 @@ export function ParticipantTemplatesPage() {
         },
       ],
     };
-  }, [previewQuery.data]);
+  }, [previewQuery.data, t]);
+
+  const dimensionOptions = useMemo(
+    () =>
+      normalizeDimensions([...builtinDimensions, ...draft.template.dimensions]).map((value) => ({
+        label: t(`attributes.${value}`),
+        value,
+      })),
+    [draft.template.dimensions, t],
+  );
+
+  const addDimension = (rawValue: string) => {
+    const value = rawValue.trim();
+    if (!value) return;
+
+    setDraft((current) => ({
+      ...current,
+      template: {
+        ...current.template,
+        dimensions: normalizeDimensions([...current.template.dimensions, value]),
+      },
+    }));
+    setNewDimension("");
+  };
 
   return (
     <>
       <PageHeader
-        title="Population composition studio"
-        subtitle="Layer global distributions, conditional overrides, and rule priority into a reusable participant template."
+        title={t("templates.title")}
+        subtitle={t("templates.subtitle")}
         actions={
           <Space>
             <Button
@@ -177,7 +215,7 @@ export function ParticipantTemplatesPage() {
                 setDraft(defaultDraft);
               }}
             >
-              New
+              {t("templates.new")}
             </Button>
             <Button
               icon={<CopyOutlined />}
@@ -185,11 +223,11 @@ export function ParticipantTemplatesPage() {
               onClick={async () => {
                 if (!selectedId) return;
                 await apiClient.post(`/participant-templates/${selectedId}/clone`);
-                message.success("Template cloned");
+                message.success(t("templates.templateCloned"));
                 queryClient.invalidateQueries({ queryKey: ["templates"] });
               }}
             >
-              Clone
+              {t("templates.clone")}
             </Button>
             <Button
               danger
@@ -198,10 +236,10 @@ export function ParticipantTemplatesPage() {
               loading={deleteMutation.isPending}
               onClick={() => selectedId && deleteMutation.mutate(selectedId)}
             >
-              Delete
+              {t("templates.delete")}
             </Button>
             <Button type="primary" icon={<SaveOutlined />} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-              Save
+              {t("templates.save")}
             </Button>
           </Space>
         }
@@ -209,9 +247,9 @@ export function ParticipantTemplatesPage() {
 
       <div className="workspace-grid--triple">
         <Panel>
-          <Typography.Title level={4}>Templates</Typography.Title>
+          <Typography.Title level={4}>{t("templates.templates")}</Typography.Title>
           <List
-            locale={{ emptyText: <Empty description="No templates yet" /> }}
+            locale={{ emptyText: <Empty description={t("templates.noTemplates")} /> }}
             dataSource={templatesQuery.data ?? []}
             renderItem={(item) => (
               <List.Item
@@ -219,20 +257,21 @@ export function ParticipantTemplatesPage() {
                   cursor: "pointer",
                   borderRadius: 16,
                   paddingInline: 12,
-                  background: item.id === selectedId ? "rgba(215,185,143,.12)" : "transparent",
+                  background: item.id === selectedId ? "rgba(59,130,246,.12)" : "transparent",
+                  border: item.id === selectedId ? "1px solid rgba(59,130,246,.28)" : "1px solid transparent",
                 }}
                 onClick={() => setSelectedId(item.id)}
               >
-                <List.Item.Meta title={item.name} description={`${item.rules.length} rules`} />
+                <List.Item.Meta title={item.name} description={t("templates.rulesCount", { count: item.rules.length })} />
               </List.Item>
             )}
           />
         </Panel>
 
         <Panel>
-          <Typography.Title level={4}>Rule editor</Typography.Title>
+          <Typography.Title level={4}>{t("templates.ruleEditor")}</Typography.Title>
           <Form layout="vertical">
-            <Form.Item label="Template name">
+            <Form.Item label={t("templates.templateName")}>
               <Input
                 value={draft.template.name}
                 onChange={(event) =>
@@ -243,7 +282,7 @@ export function ParticipantTemplatesPage() {
                 }
               />
             </Form.Item>
-            <Form.Item label="Description">
+            <Form.Item label={t("templates.description")}>
               <Input.TextArea
                 rows={2}
                 value={draft.template.description}
@@ -255,31 +294,23 @@ export function ParticipantTemplatesPage() {
                 }
               />
             </Form.Item>
-            <Space wrap align="start">
-              <Form.Item label="Tracked dimensions">
+            <Space wrap align="start" style={{ width: "100%" }}>
+              <Form.Item label={t("templates.trackedDimensions")} style={{ minWidth: 320, flex: 1 }}>
                 <Select
-                  mode="multiple"
+                  mode="tags"
+                  tokenSeparators={[","]}
                   style={{ minWidth: 280 }}
                   value={draft.template.dimensions}
-                  options={[
-                    "region",
-                    "country",
-                    "continent",
-                    "gender",
-                    "ageRange",
-                    "educationLevel",
-                    "occupation",
-                    "incomeRange",
-                    "interests",
-                    "maritalStatus",
-                    "customTags",
-                  ].map((value) => ({ label: value, value }))}
+                  options={dimensionOptions}
                   onChange={(dimensions) =>
-                    setDraft((current) => ({ ...current, template: { ...current.template, dimensions } }))
+                    setDraft((current) => ({
+                      ...current,
+                      template: { ...current.template, dimensions: normalizeDimensions(dimensions) },
+                    }))
                   }
                 />
               </Form.Item>
-              <Form.Item label="Preview sample size">
+              <Form.Item label={t("templates.previewSampleSize")}>
                 <InputNumber
                   min={50}
                   max={5000}
@@ -293,23 +324,46 @@ export function ParticipantTemplatesPage() {
                 />
               </Form.Item>
             </Space>
+            <Form.Item label={t("templates.customDimension")}>
+              <Space.Compact style={{ width: "100%" }}>
+                <Input
+                  value={newDimension}
+                  placeholder={t("templates.customDimensionPlaceholder")}
+                  onChange={(event) => setNewDimension(event.target.value)}
+                  onPressEnter={() => addDimension(newDimension)}
+                />
+                <Button onClick={() => addDimension(newDimension)}>{t("templates.addDimension")}</Button>
+              </Space.Compact>
+              <div className="subtle-help">{t("templates.dimensionHint")}</div>
+            </Form.Item>
+            <Space size={[8, 8]} wrap>
+              {draft.template.dimensions.map((dimension) => (
+                <Tag key={dimension} color={builtinDimensions.includes(dimension as (typeof builtinDimensions)[number]) ? "blue" : "default"}>
+                  {t(`attributes.${dimension}`)}
+                </Tag>
+              ))}
+            </Space>
           </Form>
-          <RuleBuilder value={draft.rules} onChange={(rules) => setDraft((current) => ({ ...current, rules }))} />
+          <RuleBuilder
+            value={draft.rules}
+            attributeOptions={draft.template.dimensions}
+            onChange={(rules) => setDraft((current) => ({ ...current, rules }))}
+          />
         </Panel>
 
         <div className="card-stack">
           <Panel>
-            <Typography.Title level={4}>Distribution preview</Typography.Title>
-            {previewOptions ? <SimpleChart option={previewOptions} /> : <Empty description="Save a template to preview" />}
+            <Typography.Title level={4}>{t("templates.distributionPreview")}</Typography.Title>
+            {previewOptions ? <SimpleChart option={previewOptions} /> : <Empty description={t("templates.previewSaveHint")} />}
           </Panel>
           <Panel>
-            <Typography.Title level={4}>Composition snapshot</Typography.Title>
-            {pieOptions ? <SimpleChart option={pieOptions} /> : <Empty description="No preview available" />}
+            <Typography.Title level={4}>{t("templates.compositionSnapshot")}</Typography.Title>
+            {pieOptions ? <SimpleChart option={pieOptions} /> : <Empty description={t("templates.previewUnavailable")} />}
           </Panel>
           <Panel>
-            <Typography.Title level={4}>Conflict detector</Typography.Title>
+            <Typography.Title level={4}>{t("templates.conflictDetector")}</Typography.Title>
             <List
-              locale={{ emptyText: "No conflicts detected" }}
+              locale={{ emptyText: t("templates.noConflicts") }}
               dataSource={previewQuery.data?.conflicts ?? []}
               renderItem={(item) => (
                 <List.Item>
