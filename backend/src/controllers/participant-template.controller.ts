@@ -28,13 +28,52 @@ export function participantTemplateControllerFactory(service: ParticipantTemplat
       }
     },
     delete: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-      reply.send(await service.delete(request.authUser!.id, request.params.id));
+      try {
+        reply.send(await service.delete(request.authUser!.id, request.params.id));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
     },
     clone: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       reply.send(await service.clone(request.authUser!.id, request.params.id));
     },
     preview: async (request: FastifyRequest<{ Params: { id: string }; Querystring: { sampleSize?: number } }>, reply: FastifyReply) => {
       reply.send(await service.preview(request.authUser!.id, request.params.id, request.query.sampleSize));
+    },
+    generateWithAi: async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        reply.send(await service.generateWithAi(request.authUser!.id, request.body));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    generateWithAiStream: async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        reply.hijack();
+        reply.raw.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        reply.raw.write(": connected\n\n");
+
+        for await (const event of service.generateWithAiStream(request.authUser!.id, request.body)) {
+          reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+        }
+
+        reply.raw.end();
+      } catch (error) {
+        if (!reply.sent) {
+          reply.hijack();
+          reply.raw.writeHead(200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          });
+        }
+        reply.raw.write(`data: ${JSON.stringify({ type: "error", message: error instanceof Error ? error.message : String(error) })}\n\n`);
+        reply.raw.end();
+      }
     },
   };
 }

@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { ConditionExpression, ParticipantIdentity, ParticipantRuleInput, ParticipantTemplateDto, TemplatePreview } from "@formagents/shared";
+import { resolveParticipantAttributeDefinition } from "@formagents/shared";
+import type {
+  ConditionExpression,
+  ParticipantIdentity,
+  ParticipantRuleInput,
+  ParticipantTemplateDto,
+  TemplatePreview,
+} from "@formagents/shared";
 
 interface GeneratedIdentity extends ParticipantIdentity {
   _meta?: {
@@ -21,7 +28,49 @@ function randomNoise() {
   };
 }
 
+function randomPick<T>(items: T[]) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function hasScope(scope?: ConditionExpression) {
+  return Boolean(scope);
+}
+
 export class RuleEngineService {
+  detectConflictsForRules(rules: Array<Pick<ParticipantTemplateDto["rules"][number], "id" | "name" | "enabled" | "priority" | "scope" | "assignment">>) {
+    const conflicts: TemplatePreview["conflicts"] = [];
+    const enabledRules = rules.filter((rule) => rule.enabled);
+
+    for (const rule of enabledRules) {
+      if (rule.assignment.mode === "distribution" && rule.assignment.distribution) {
+        const total = rule.assignment.distribution.reduce((sum, item) => sum + item.percentage, 0);
+        if (Math.abs(total - 100) > 0.01) {
+          conflicts.push({ ruleIds: [rule.id], message: `${rule.name} distribution total is ${total}% instead of 100%`, severity: "error" });
+        }
+      }
+    }
+
+    for (let index = 0; index < enabledRules.length; index += 1) {
+      for (let next = index + 1; next < enabledRules.length; next += 1) {
+        const current = enabledRules[index];
+        const candidate = enabledRules[next];
+        if (current.priority !== candidate.priority) continue;
+        if (current.assignment.attribute !== candidate.assignment.attribute) continue;
+        const currentScope = JSON.stringify(current.scope ?? null);
+        const candidateScope = JSON.stringify(candidate.scope ?? null);
+        if (currentScope === candidateScope || !current.scope || !candidate.scope) {
+          conflicts.push({
+            ruleIds: [current.id, candidate.id],
+            message: `${current.name} and ${candidate.name} target the same attribute at the same priority`,
+            severity: "warning",
+          });
+        }
+      }
+    }
+
+    return conflicts;
+  }
+
   preview(template: ParticipantTemplateDto, sampleSize?: number): TemplatePreview {
     const generated = this.generateIdentities(template, sampleSize ?? template.sampleSizePreview);
     const attributeDistributions: Record<string, Array<{ label: string; count: number; percentage: number }>> = {};
@@ -54,41 +103,15 @@ export class RuleEngineService {
   }
 
   detectConflicts(template: ParticipantTemplateDto) {
-    const conflicts: TemplatePreview["conflicts"] = [];
-    const rules = template.rules.filter((rule) => rule.enabled);
-
-    for (const rule of rules) {
-      if (rule.assignment.mode === "distribution" && rule.assignment.distribution) {
-        const total = rule.assignment.distribution.reduce((sum, item) => sum + item.percentage, 0);
-        if (Math.abs(total - 100) > 0.01) {
-          conflicts.push({ ruleIds: [rule.id], message: `${rule.name} distribution total is ${total}% instead of 100%`, severity: "error" });
-        }
-      }
-    }
-
-    for (let index = 0; index < rules.length; index += 1) {
-      for (let next = index + 1; next < rules.length; next += 1) {
-        const current = rules[index];
-        const candidate = rules[next];
-        if (current.priority !== candidate.priority) continue;
-        if (current.assignment.attribute !== candidate.assignment.attribute) continue;
-        const currentScope = JSON.stringify(current.scope ?? null);
-        const candidateScope = JSON.stringify(candidate.scope ?? null);
-        if (currentScope === candidateScope || !current.scope || !candidate.scope) {
-          conflicts.push({
-            ruleIds: [current.id, candidate.id],
-            message: `${current.name} and ${candidate.name} target the same attribute at the same priority`,
-            severity: "warning",
-          });
-        }
-      }
-    }
-
-    return conflicts;
+    return this.detectConflictsForRules(template.rules);
   }
 
   generateIdentities(template: ParticipantTemplateDto, count: number) {
     const rules = [...template.rules].filter((rule) => rule.enabled).sort((a, b) => b.priority - a.priority);
+    const templateAttributes = template.attributes ?? [];
+    const globallyAssignedAttributes = new Set(
+      rules.filter((rule) => !hasScope(rule.scope)).map((rule) => rule.assignment.attribute),
+    );
     const identities: GeneratedIdentity[] = [];
 
     for (let index = 0; index < count; index += 1) {
@@ -110,6 +133,33 @@ export class RuleEngineService {
         (identity as unknown as Record<string, unknown>)[attribute] = value;
         lockedAttributes.add(attribute);
         identity._meta?.appliedRuleIds.push(rule.id);
+      }
+
+      for (const attribute of templateAttributes) {
+        if (attribute.key === "noise") continue;
+        const currentValue = (identity as Record<string, unknown>)[attribute.key];
+        if (currentValue !== undefined && currentValue !== null && (!Array.isArray(currentValue) || currentValue.length > 0)) {
+          continue;
+        }
+
+        if (!globallyAssignedAttributes.has(attribute.key)) {
+          continue;
+        }
+
+        const presets = attribute.presetValues ?? [];
+        if (!presets.length) {
+          (identity as Record<string, unknown>)[attribute.key] = attribute.valueType === "multi"
+            ? []
+            : "unspecified";
+          continue;
+        }
+
+        if (attribute.valueType === "multi") {
+          (identity as Record<string, unknown>)[attribute.key] = [randomPick(presets).value];
+          continue;
+        }
+
+        (identity as Record<string, unknown>)[attribute.key] = randomPick(presets).value;
       }
 
       identities.push(identity);
@@ -174,5 +224,9 @@ export class RuleEngineService {
       return scope.children.every((child) => this.matchesScope(identity, child));
     }
     return scope.children.some((child) => this.matchesScope(identity, child));
+  }
+
+  resolveAttribute(template: Pick<ParticipantTemplateDto, "attributes">, key: string) {
+    return resolveParticipantAttributeDefinition(template.attributes, key);
   }
 }

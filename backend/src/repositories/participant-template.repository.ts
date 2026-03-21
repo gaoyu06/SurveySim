@@ -22,7 +22,7 @@ export const participantTemplateRepository = {
         userId,
         name: input.name,
         description: input.description,
-        dimensions: toJson(input.dimensions),
+        dimensions: toJson(input.attributes),
         sampleSizePreview: input.sampleSizePreview,
         rules: {
           create: rules.map((rule) => ({
@@ -47,7 +47,7 @@ export const participantTemplateRepository = {
           userId,
           name: input.name,
           description: input.description,
-          dimensions: toJson(input.dimensions),
+          dimensions: toJson(input.attributes),
           sampleSizePreview: input.sampleSizePreview,
           rules: {
             create: rules.map((rule) => ({
@@ -64,7 +64,18 @@ export const participantTemplateRepository = {
       });
     });
   },
+  countReferencingRuns(userId: string, id: string) {
+    return prisma.mockRun.count({
+      where: {
+        userId,
+        participantTemplateId: id,
+      },
+    });
+  },
   delete(userId: string, id: string) {
-    return prisma.participantTemplate.deleteMany({ where: { userId, id } });
+    return prisma.$transaction(async (tx) => {
+      await tx.participantRule.deleteMany({ where: { templateId: id } });
+      return tx.participantTemplate.deleteMany({ where: { userId, id } });
+    });
   },
 };

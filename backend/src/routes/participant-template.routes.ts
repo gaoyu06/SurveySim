@@ -7,6 +7,8 @@ export async function participantTemplateRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] };
   app.get("/", auth, controller.list as any);
   app.post("/", auth, controller.create as any);
+  app.post("/generate-with-ai", auth, controller.generateWithAi as any);
+  app.post("/generate-with-ai/stream", auth, controller.generateWithAiStream as any);
   app.get("/:id", auth, controller.get as any);
   app.put("/:id", auth, controller.update as any);
   app.delete("/:id", auth, controller.delete as any);
