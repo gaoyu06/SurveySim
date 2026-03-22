@@ -1,8 +1,8 @@
 import { DownloadOutlined } from "@ant-design/icons";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { App, Button, Empty, Form, Input, Select, Space, Table, Tag, Typography } from "antd";
+import { App, Button, Empty, Form, Input, Progress, Select, Space, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import type { MockRunDto, ReportComparisonDto, ReportDto } from "@formagents/shared";
+import type { MockRunDto, ReportComparisonDto, ReportDto } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
 import { SimpleChart } from "@/components/charts/SimpleChart";
 import { PageHeader, Panel } from "@/components/PageHeader";
@@ -13,8 +13,51 @@ const attributeOptions = ["country", "gender", "ageRange", "incomeRange", "inter
 type QuestionReport = ReportDto["questions"][number];
 type ComparisonRun = ReportComparisonDto["runs"][number];
 
+function getQuestionCardLayout(question: QuestionReport) {
+  if (question.openText || question.matrixSingleChoice?.rows.length || question.rating) {
+    return "wide";
+  }
+  return "compact";
+}
+
+function shouldShowQuestionChart(question: QuestionReport) {
+  return Boolean(buildSingleQuestionChart(question));
+}
+
+function OpenTextAnswerList({
+  answers,
+  t,
+}: {
+  answers: string[];
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  if (!answers.length) {
+    return <Typography.Text type="secondary">{t("reports.noOpenAnswers")}</Typography.Text>;
+  }
+
+  return (
+    <div className="open-answer-list">
+      {answers.map((answer, index) => (
+        <details key={`${index}-${answer.slice(0, 24)}`} className="open-answer-item">
+          <summary className="open-answer-summary">
+            <div className="open-answer-head">
+              <Typography.Text strong className="open-answer-index">{`#${index + 1}`}</Typography.Text>
+              <Typography.Text type="secondary" className="open-answer-preview">
+                {answer}
+              </Typography.Text>
+            </div>
+          </summary>
+          <div className="open-answer-content">
+            <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{answer}</Typography.Paragraph>
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 async function download(path: string, filename: string) {
-  const persisted = localStorage.getItem("formagents-auth");
+  const persisted = localStorage.getItem("surveysim-auth");
   const parsed = persisted ? JSON.parse(persisted) : null;
   const response = await fetch(`/api${path}`, {
     headers: parsed?.state?.token ? { Authorization: `Bearer ${parsed.state.token}` } : {},
@@ -28,18 +71,24 @@ async function download(path: string, filename: string) {
   window.URL.revokeObjectURL(url);
 }
 
-function toQuestionOptions(questions: QuestionReport[], t: (key: string, params?: Record<string, string | number>) => string) {
-  return questions.map((question) => ({
-    label: `${question.title} · ${t(`questionType.${question.type}`)}`,
-    value: question.questionId,
-  }));
-}
-
 function buildSingleQuestionChart(question?: QuestionReport | null) {
   if (!question) return null;
 
   if (question.singleChoice?.length || question.multiChoice?.length) {
     const items = question.singleChoice ?? question.multiChoice ?? [];
+    if (question.suggestedChart === "pie" && items.length <= 5) {
+      return {
+        tooltip: { trigger: "item" },
+        legend: { bottom: 0, textStyle: { color: "#e5e7eb" } },
+        series: [
+          {
+            type: "pie",
+            radius: ["42%", "72%"],
+            data: items.map((item) => ({ name: item.label, value: item.count })),
+          },
+        ],
+      };
+    }
     return {
       tooltip: { trigger: "axis" },
       xAxis: {
@@ -80,91 +129,21 @@ function buildSingleQuestionChart(question?: QuestionReport | null) {
   }
 
   if (question.matrixSingleChoice?.rows.length) {
-    const firstRow = question.matrixSingleChoice.rows[0];
     return {
       tooltip: { trigger: "axis" },
       legend: { bottom: 0, textStyle: { color: "#e5e7eb" } },
       xAxis: {
         type: "category",
-        data: firstRow.columns.map((item) => item.label),
-        axisLabel: { color: "#e5e7eb", interval: 0, rotate: firstRow.columns.length > 4 ? 12 : 0 },
+        data: question.matrixSingleChoice.rows.map((row) => row.rowLabel),
+        axisLabel: { color: "#e5e7eb", interval: 0, rotate: question.matrixSingleChoice.rows.length > 4 ? 12 : 0 },
       },
       yAxis: { type: "value", axisLabel: { color: "#e5e7eb" } },
-      series: [
-        {
-          type: "bar",
-          data: firstRow.columns.map((item) => item.percentage),
-          itemStyle: { color: "#3b82f6", borderRadius: [8, 8, 0, 0] },
-        },
-      ],
-    };
-  }
-
-  return null;
-}
-
-function buildGroupedQuestionChart(question: QuestionReport, groups: ReportDto["groups"], t: (key: string, params?: Record<string, string | number>) => string) {
-  if (question.groupedRating?.length) {
-    return {
-      tooltip: { trigger: "axis" },
-      xAxis: {
-        type: "category",
-        data: question.groupedRating.map((item) => item.groupLabel),
-        axisLabel: { color: "#f4ede1" },
-      },
-      yAxis: { type: "value", axisLabel: { color: "#f4ede1" } },
-      series: [
-        {
-          type: "line",
-          smooth: true,
-          data: question.groupedRating.map((item) => item.mean),
-          lineStyle: { color: "#8da0ff", width: 3 },
-          itemStyle: { color: "#d7b98f" },
-        },
-      ],
-    };
-  }
-
-  const groupedChoices = question.groupedSingleChoice ?? question.groupedMultiChoice;
-  if (groupedChoices) {
-    const entries = Object.entries(groupedChoices);
-    const labels = [...(question.singleChoice ?? []), ...(question.multiChoice ?? [])].map((item) => item.label);
-    return {
-      tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { color: "#f4ede1" } },
-      xAxis: {
-        type: "category",
-        data: groups.map((group) => group.label),
-        axisLabel: { color: "#f4ede1" },
-      },
-      yAxis: { type: "value", axisLabel: { color: "#f4ede1" } },
-      series: entries.map(([_, values], index) => ({
+      series: question.matrixSingleChoice.rows[0]?.columns.map((column, columnIndex) => ({
         type: "bar",
-        name: labels[index] ?? t("reports.optionFallback", { index: index + 1 }),
-        data: values.map((item) => item.percentage),
-      })),
-    };
-  }
-
-  if (question.matrixSingleChoice?.rows.length && groups.length) {
-    const firstRow = question.matrixSingleChoice.rows[0];
-    const groupedColumns = firstRow.groupedColumns;
-    if (!groupedColumns) return null;
-
-    return {
-      tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { color: "#e5e7eb" } },
-      xAxis: {
-        type: "category",
-        data: groups.map((group) => group.label),
-        axisLabel: { color: "#e5e7eb" },
-      },
-      yAxis: { type: "value", axisLabel: { color: "#e5e7eb" } },
-      series: Object.entries(groupedColumns).map(([columnId, values]) => ({
-        type: "bar",
-        name: firstRow.columns.find((column) => column.columnId === columnId)?.label ?? t("reports.optionFallback", { index: 1 }),
-        data: values.map((item) => item.percentage),
-      })),
+        name: column.label,
+        stack: "matrix",
+        data: question.matrixSingleChoice?.rows.map((row) => row.columns[columnIndex]?.percentage ?? 0),
+      })) ?? [],
     };
   }
 
@@ -411,71 +390,56 @@ function renderQuestionMetrics(question: QuestionReport | null | undefined, t: (
   if (question.openText) {
     return (
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
-        {question.openText.summary ? <Typography.Paragraph>{question.openText.summary}</Typography.Paragraph> : null}
-        <Space wrap>
-          {question.openText.keywords.map((keyword) => (
-            <Tag key={keyword}>{keyword}</Tag>
-          ))}
-        </Space>
+        <Typography.Text type="secondary">{t("reports.openAnswersCount", { count: question.openText.answers.length })}</Typography.Text>
+        <OpenTextAnswerList answers={question.openText.answers} t={t} />
       </Space>
     );
   }
 
   if (question.matrixSingleChoice?.rows.length) {
     return (
-      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <div className="matrix-report-grid">
         {question.matrixSingleChoice.rows.map((row) => (
-          <div key={row.rowId} className="rule-card">
-            <Typography.Title level={5} style={{ marginTop: 0 }}>
-              {row.rowLabel}
-            </Typography.Title>
-            <Space wrap>
-              {row.columns.map((column) => (
-                <Tag key={`${row.rowId}_${column.columnId}`}>{`${column.label}: ${column.percentage}%`}</Tag>
-              ))}
+          <div key={row.rowId} className="matrix-report-card">
+            <Space direction="vertical" size={10} style={{ width: "100%" }}>
+              <Space align="baseline" style={{ justifyContent: "space-between", width: "100%" }}>
+                <Typography.Title level={5} style={{ margin: 0, fontSize: 16 }}>
+                  {row.rowLabel}
+                </Typography.Title>
+                <Typography.Text type="secondary">{t("reports.answersCount", { count: row.responses })}</Typography.Text>
+              </Space>
+              <div className="matrix-report-options">
+                {row.columns
+                  .slice()
+                  .sort((a, b) => b.percentage - a.percentage)
+                  .map((column) => (
+                    <div key={`${row.rowId}_${column.columnId}`} className="matrix-report-option">
+                      <Typography.Text className="matrix-report-option__label">{column.label}</Typography.Text>
+                      <Typography.Text type="secondary" className="matrix-report-option__meta">
+                        {`${column.count} · ${column.percentage}%`}
+                      </Typography.Text>
+                      <Progress percent={column.percentage} size="small" showInfo={false} strokeColor="#3b82f6" trailColor="rgba(148, 163, 184, 0.12)" />
+                    </div>
+                  ))}
+              </div>
             </Space>
           </div>
         ))}
-      </Space>
+      </div>
     );
   }
 
   return <Typography.Text type="secondary">{t("reports.noMetrics")}</Typography.Text>;
 }
 
-function renderOpenSamples(question: QuestionReport | null | undefined, t: (key: string, params?: Record<string, string | number>) => string) {
-  const answers = question?.openText?.answers ?? [];
-  if (question?.matrixSingleChoice?.rows.length) {
-    return (
-      <Table
-        size="small"
-        pagination={false}
-        rowKey="rowId"
-        dataSource={question.matrixSingleChoice.rows}
-        columns={[
-          { title: t("surveyEditor.matrixRowLabel"), dataIndex: "rowLabel", key: "rowLabel" },
-          {
-            title: t("reports.matrixDistribution"),
-            key: "distribution",
-            render: (_, row) => row.columns.map((column: { columnId: string; label: string; percentage: number }) => `${column.label}: ${column.percentage}%`).join(" / "),
-          },
-          { title: t("common.responses"), dataIndex: "responses", key: "responses" },
-        ]}
-      />
-    );
-  }
-
-  if (!answers.length) {
-    return <Empty description={t("reports.noOpenAnswers")} />;
-  }
-
+function renderQuestionStatus(question: QuestionReport, totalResponses: number, t: (key: string, params?: Record<string, string | number>) => string) {
   return (
-    <Space direction="vertical" size={10} style={{ width: "100%" }}>
-      {answers.slice(0, 8).map((answer, index) => (
-        <div key={`${index}_${answer}`} className="rule-card">
-          <Typography.Text>{answer}</Typography.Text>
-        </div>
-      ))}
+    <Space wrap>
+      <Tag color="blue">{t("reports.answersCount", { count: question.responseCount })}</Tag>
+      <Tag color="gold">{t("reports.responseRate", { rate: question.responseRate })}</Tag>
+      <Tag>{t(`questionType.${question.type}`)}</Tag>
+      {question.suggestedChart !== "none" ? <Tag>{t(`reports.chartType.${question.suggestedChart}`)}</Tag> : null}
+      <Tag>{t("reports.totalResponsesForRun", { count: totalResponses })}</Tag>
     </Space>
   );
 }
@@ -494,12 +458,6 @@ function renderCompareOpenText(runs: ComparisonRun[], questionId: string | undef
       {items.map((item) => (
         <div key={item.runName} className="rule-card">
           <Typography.Title level={5}>{item.runName}</Typography.Title>
-          {item.question?.openText?.summary ? <Typography.Paragraph>{item.question.openText.summary}</Typography.Paragraph> : null}
-          <Space wrap style={{ marginBottom: 10 }}>
-            {(item.question?.openText?.keywords ?? []).map((keyword) => (
-              <Tag key={`${item.runName}_${keyword}`}>{keyword}</Tag>
-            ))}
-          </Space>
           <Typography.Text type="secondary">{t("reports.answersCount", { count: item.question?.openText?.answers.length ?? 0 })}</Typography.Text>
         </div>
       ))}
@@ -512,10 +470,8 @@ export function ReportsPage() {
   const { t } = useI18n();
   const [runId, setRunId] = useState<string>();
   const [compareRunIds, setCompareRunIds] = useState<string[]>([]);
-  const [groupBy, setGroupBy] = useState<string>();
   const [filterAttribute, setFilterAttribute] = useState<string>();
   const [filterValue, setFilterValue] = useState("");
-  const [selectedQuestionId, setSelectedQuestionId] = useState<string>();
   const [selectedCompareQuestionId, setSelectedCompareQuestionId] = useState<string>();
 
   const runsQuery = useQuery({
@@ -526,7 +482,6 @@ export function ReportsPage() {
   const reportMutation = useMutation({
     mutationFn: () =>
       apiClient.post<ReportDto>(`/reports/${runId}`, {
-        groupBy,
         attributes: filterAttribute && filterValue.trim() ? { [filterAttribute]: filterValue.split(",").map((item) => item.trim()).filter(Boolean) } : {},
       }),
     onError: (error: Error) => message.error(error.message),
@@ -536,7 +491,6 @@ export function ReportsPage() {
     mutationFn: () =>
       apiClient.post<ReportComparisonDto>("/reports/compare", {
         runIds: compareRunIds,
-        groupBy,
         attributes: filterAttribute && filterValue.trim() ? { [filterAttribute]: filterValue.split(",").map((item) => item.trim()).filter(Boolean) } : {},
       }),
     onError: (error: Error) => message.error(error.message),
@@ -544,18 +498,6 @@ export function ReportsPage() {
 
   const currentReport = reportMutation.data;
   const comparison = compareMutation.data;
-
-  useEffect(() => {
-    if (currentReport?.questions.length) {
-      setSelectedQuestionId((current) =>
-        current && currentReport.questions.some((question) => question.questionId === current)
-          ? current
-          : currentReport.questions[0].questionId,
-      );
-    } else {
-      setSelectedQuestionId(undefined);
-    }
-  }, [currentReport]);
 
   useEffect(() => {
     const questions = comparison?.runs[0]?.questions ?? [];
@@ -568,23 +510,16 @@ export function ReportsPage() {
     }
   }, [comparison]);
 
-  const selectedQuestion = useMemo(
-    () => currentReport?.questions.find((question) => question.questionId === selectedQuestionId) ?? null,
-    [currentReport, selectedQuestionId],
-  );
-
-  const singleQuestionChart = useMemo(() => buildSingleQuestionChart(selectedQuestion), [selectedQuestion]);
-  const groupedQuestionChart = useMemo(
-    () => (selectedQuestion && currentReport ? buildGroupedQuestionChart(selectedQuestion, currentReport.groups, t) : null),
-    [selectedQuestion, currentReport, t],
-  );
-
   const compareVolumeChart = useMemo(() => buildCompareVolumeChart(comparison), [comparison]);
   const compareQuestionChart = useMemo(
     () => buildCompareQuestionChart(comparison?.runs ?? [], selectedCompareQuestionId, t),
     [comparison, selectedCompareQuestionId, t],
   );
   const diffRows = useMemo(() => buildDiffRows(comparison, t), [comparison, t]);
+  const selectedCompareQuestion = useMemo(
+    () => comparison?.runs[0]?.questions.find((question) => question.questionId === selectedCompareQuestionId) ?? null,
+    [comparison, selectedCompareQuestionId],
+  );
 
   return (
     <>
@@ -604,9 +539,6 @@ export function ReportsPage() {
                 onChange={setRunId}
               />
             </Form.Item>
-            <Form.Item label={t("reports.groupBy")}>
-              <Select allowClear placeholder={t("reports.groupByPlaceholder")} options={attributeOptions.map((value) => ({ label: t(`attributes.${value}`), value }))} value={groupBy} onChange={setGroupBy} />
-            </Form.Item>
             <Form.Item label={t("reports.filterAttribute")}>
               <Select allowClear placeholder={t("reports.filterAttributePlaceholder")} options={attributeOptions.map((value) => ({ label: t(`attributes.${value}`), value }))} value={filterAttribute} onChange={setFilterAttribute} />
             </Form.Item>
@@ -619,6 +551,9 @@ export function ReportsPage() {
               </Button>
               <Button icon={<DownloadOutlined />} disabled={!runId} onClick={() => runId && download(`/exports/${runId}/csv`, `${runId}.csv`)}>
                 {t("reports.exportCsv")}
+              </Button>
+              <Button icon={<DownloadOutlined />} disabled={!runId} onClick={() => runId && download(`/exports/${runId}/open-text-csv`, `${runId}-open-text.csv`)}>
+                {t("reports.exportOpenTextCsv")}
               </Button>
               <Button icon={<DownloadOutlined />} disabled={!runId} onClick={() => runId && download(`/exports/${runId}/json`, `${runId}.json`)}>
                 {t("reports.exportJson")}
@@ -642,7 +577,6 @@ export function ReportsPage() {
                 onChange={setCompareRunIds}
               />
             </Form.Item>
-            <Typography.Paragraph style={{ color: "rgba(244,237,225,.72)" }}>{t("reports.compareDescription")}</Typography.Paragraph>
             <Button type="primary" disabled={compareRunIds.length < 2} loading={compareMutation.isPending} onClick={() => compareMutation.mutate()}>
               {t("reports.compareRuns")}
             </Button>
@@ -662,85 +596,37 @@ export function ReportsPage() {
                 <div className="metric-label">{t("common.questions")}</div>
                 <div className="metric-value">{currentReport.questions.length}</div>
               </Panel>
-              <Panel style={{ padding: 18 }}>
-                <div className="metric-label">{t("reports.groupedBy")}</div>
-                <div className="metric-value" style={{ fontSize: 22 }}>{currentReport.groupedBy ? t(`attributes.${currentReport.groupedBy}`) : t("common.none")}</div>
-              </Panel>
             </div>
 
             <Panel>
-              <Space direction="vertical" size={14} style={{ width: "100%" }}>
-                <Typography.Title level={4}>{t("reports.questionNavigator")}</Typography.Title>
-                <Select
-                  showSearch
-                  options={toQuestionOptions(currentReport.questions, t)}
-                  value={selectedQuestionId}
-                  onChange={setSelectedQuestionId}
-                />
-                <Space wrap>
-                  {currentReport.groupedBy ? <Tag color="gold">{t("reports.groupedByTag", { attribute: t(`attributes.${currentReport.groupedBy}`) })}</Tag> : null}
-                  {currentReport.groups.map((group) => (
-                    <Tag key={group.key}>{`${group.label}: ${group.count}`}</Tag>
-                  ))}
-                </Space>
-              </Space>
+              <Typography.Title level={4}>{t("reports.questionGallery")}</Typography.Title>
+              <div className="question-gallery-grid">
+                {currentReport.questions.map((question) => {
+                  const chart = buildSingleQuestionChart(question);
+                  return (
+                    <div
+                      key={question.questionId}
+                      className={`rule-card question-gallery-card question-gallery-card--${getQuestionCardLayout(question)}`}
+                    >
+                      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                        <div>
+                          <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 6 }}>
+                            {question.title}
+                          </Typography.Title>
+                          {renderQuestionStatus(question, currentReport.totalResponses, t)}
+                        </div>
+                        {renderQuestionMetrics(question, t)}
+                        {shouldShowQuestionChart(question) ? (
+                          <div style={{ marginTop: 8 }}>
+                            <SimpleChart option={chart!} />
+                          </div>
+                        ) : null}
+                      </Space>
+                    </div>
+                  );
+                })}
+              </div>
             </Panel>
-
-            <div className="workspace-grid">
-              <Panel>
-                <Typography.Title level={4}>{selectedQuestion?.title ?? t("reports.questionDetails")}</Typography.Title>
-                <Typography.Paragraph type="secondary">{selectedQuestion ? t(`questionType.${selectedQuestion.type}`) : ""}</Typography.Paragraph>
-                {renderQuestionMetrics(selectedQuestion, t)}
-                <div style={{ marginTop: 16 }}>
-                  {singleQuestionChart ? <SimpleChart option={singleQuestionChart} /> : <Empty description={t("reports.noChart")} />}
-                </div>
-              </Panel>
-              <Panel>
-                <Typography.Title level={4}>{t("reports.groupedView")}</Typography.Title>
-                {currentReport.groupedBy ? (
-                  groupedQuestionChart ? <SimpleChart option={groupedQuestionChart} /> : <Empty description={t("reports.noGroupedChart")} />
-                ) : (
-                  <Empty description={t("reports.chooseGroupBy")} />
-                )}
-              </Panel>
-            </div>
-
-            <div className="workspace-grid">
-              <Panel>
-                <Typography.Title level={4}>{t("reports.openSamples")}</Typography.Title>
-                {renderOpenSamples(selectedQuestion, t)}
-              </Panel>
-              <Panel>
-                <Typography.Title level={4}>{t("reports.breakdown")}</Typography.Title>
-                <Table
-                  rowKey="questionId"
-                  pagination={false}
-                  dataSource={currentReport.questions}
-                  rowClassName={(record) => (record.questionId === selectedQuestionId ? "report-row-active" : "")}
-                  onRow={(record) => ({
-                    onClick: () => setSelectedQuestionId(record.questionId),
-                    style: { cursor: "pointer" },
-                  })}
-                  columns={[
-                    { title: t("common.question"), dataIndex: "title" },
-                    { title: t("common.type"), dataIndex: "type", render: (value: string) => t(`questionType.${value}`) },
-                    {
-                      title: t("common.metric"),
-                      render: (_, item) =>
-                        item.rating
-                          ? `${t("reports.metricMean")} ${item.rating.mean} · ${t("reports.metricMedian")} ${item.rating.median}`
-                          : item.matrixSingleChoice?.rows.length
-                            ? `${item.matrixSingleChoice.rows[0]?.rowLabel ?? "-"} · ${item.matrixSingleChoice.rows[0]?.columns[0]?.label ?? "-"}`
-                          : item.singleChoice?.length
-                            ? `${item.singleChoice[0].label}: ${item.singleChoice[0].percentage}%`
-                            : item.multiChoice?.length
-                              ? `${item.multiChoice[0].label}: ${item.multiChoice[0].percentage}%`
-                              : t("reports.openAnswersCount", { count: item.openText?.answers.length ?? 0 }),
-                    },
-                  ]}
-                />
-              </Panel>
-            </div>
           </>
         ) : (
           <Panel>
@@ -765,32 +651,27 @@ export function ReportsPage() {
               </Panel>
             </div>
 
-            <Panel>
-              <Space direction="vertical" size={14} style={{ width: "100%" }}>
-                <Typography.Title level={4}>{t("reports.compareNavigator")}</Typography.Title>
-                <Select
-                  showSearch
-                  options={toQuestionOptions(comparison.runs[0]?.questions ?? [], t)}
-                  value={selectedCompareQuestionId}
-                  onChange={setSelectedCompareQuestionId}
-                />
-                <Space wrap>
-                  {comparison.runs.map((run) => (
-                    <Tag key={run.runId} color="blue">
-                      {`${run.runName}: ${run.totalResponses}`}
-                    </Tag>
-                  ))}
-                </Space>
-              </Space>
-            </Panel>
-
             <div className="workspace-grid">
               <Panel>
                 <Typography.Title level={4}>{t("reports.batchVolume")}</Typography.Title>
                 {compareVolumeChart ? <SimpleChart option={compareVolumeChart} /> : <Empty description={t("reports.noVolume")} />}
               </Panel>
               <Panel>
-                <Typography.Title level={4}>{t("reports.selectedQuestionAcrossRuns")}</Typography.Title>
+                <Typography.Title level={4}>
+                  {selectedCompareQuestion?.title ?? t("reports.selectedQuestionAcrossRuns")}
+                </Typography.Title>
+                {selectedCompareQuestion ? (
+                  <Typography.Paragraph type="secondary">
+                    {t(`questionType.${selectedCompareQuestion.type}`)}
+                  </Typography.Paragraph>
+                ) : null}
+                <Space wrap style={{ marginBottom: 16 }}>
+                  {comparison.runs.map((run) => (
+                    <Tag key={run.runId} color="blue">
+                      {`${run.runName}: ${run.totalResponses}`}
+                    </Tag>
+                  ))}
+                </Space>
                 {compareQuestionChart ? <SimpleChart option={compareQuestionChart} /> : renderCompareOpenText(comparison.runs, selectedCompareQuestionId, t)}
               </Panel>
             </div>

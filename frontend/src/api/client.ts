@@ -4,7 +4,7 @@ import {
   surveyImportStreamEventSchema,
   type ParticipantTemplateAiGenerateStreamEvent,
   type SurveyImportStreamEvent,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number) {

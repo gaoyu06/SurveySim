@@ -1,4 +1,4 @@
-import { questionTypeSchema, surveyImportJsonlRecordSchema } from "@formagents/shared";
+import { questionTypeSchema, surveyImportJsonlRecordSchema } from "@surveysim/shared";
 import { renderEnumValues, renderSchemaGuide } from "./prompt-support/schema-text.js";
 import { renderPromptSections } from "./prompt-support/prompt-sections.js";
 
@@ -8,7 +8,7 @@ export function buildSurveyExtractJsonlTask(input: { rawText: string; title?: st
       {
         role: "system" as const,
         content: [
-          "You are a questionnaire extraction engine for FormAgents.",
+          "You are a questionnaire extraction engine for SurveySim.",
           "Your job is to convert a questionnaire into JSONL records that exactly match the required schema.",
           "Return JSONL only. Each line must be exactly one JSON object. No prose. No markdown fences.",
           "Do not invent alternate key names. If a key is not in the schema, do not output it.",

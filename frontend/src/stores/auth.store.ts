@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { UserDto } from "@formagents/shared";
+import type { UserDto } from "@surveysim/shared";
 
 type AuthState = {
   token: string | null;
@@ -17,6 +17,6 @@ export const authStore = create<AuthState>()(
       setSession: (token, user) => set({ token, user }),
       clearSession: () => set({ token: null, user: null }),
     }),
-    { name: "formagents-auth" },
+    { name: "surveysim-auth" },
   ),
 );

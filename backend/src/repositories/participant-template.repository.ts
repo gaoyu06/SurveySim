@@ -1,6 +1,6 @@
 import { prisma } from "../lib/db.js";
 import { toJson } from "../lib/json.js";
-import type { ParticipantRuleInput, ParticipantTemplateInput } from "@formagents/shared";
+import type { ParticipantRuleInput, ParticipantTemplateInput } from "@surveysim/shared";
 
 export const participantTemplateRepository = {
   list(userId: string) {

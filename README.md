@@ -1,91 +1,199 @@
-# FormAgents
+# SurveySim
 
-一个用于 **AI 模拟填写调查问卷** 的 Web App MVP。
+SurveySim is an open-source web application for simulating survey respondents with LLMs.
 
-它支持：
+It helps teams turn raw questionnaires into structured survey schemas, define target populations, run large-scale mock response batches, and review the results through reports and exports.
 
-- 配置 LLM 提供方（OpenAI-compatible）
-- 创建参与者人群模板与规则
-- 导入原始问卷文本并结构化
-- 批量生成 identity / persona / mock 答卷
-- 保存 mock 批次、查看报表、导出结果
+## Why SurveySim
 
-## 技术栈
+SurveySim is designed for product teams, UX researchers, and operations teams who want a fast way to pressure-test questionnaires and response patterns before launching research workflows at scale.
 
-- Frontend: React + Vite + TypeScript + Ant Design
-- Backend: Node.js + Fastify + Prisma
-- Database: SQLite
-- Shared: Zod schema / DTO
+It combines survey structuring, participant modeling, simulation runs, and reporting in one workspace instead of spreading them across scripts and ad hoc tools.
 
-## 目录
+## Highlights
+
+- OpenAI-compatible LLM provider configuration
+- Participant template builder with rule-based audience modeling
+- Raw survey import and structured extraction workflow
+- Batch simulation for identity, persona, and survey response generation
+- Run monitoring, retry flow, reporting, and export tools
+- Full-stack TypeScript monorepo with shared schemas
+
+## Tech Stack
+
+- Frontend: React, Vite, TypeScript, Ant Design
+- Backend: Fastify, Prisma, TypeScript
+- Database: SQLite by default
+- Shared package: Zod schemas and DTOs
+
+## Repository Structure
 
 ```text
-frontend/   React 前端
-backend/    Fastify API + Prisma + SQLite
-shared/     前后端共享类型与 schema
+frontend/   React application
+backend/    Fastify API, Prisma schema, SQLite runtime
+shared/     Shared types, DTOs, and validation schemas
 ```
 
-## 本地启动
+## Getting Started
 
-### 1. 安装依赖
+### Prerequisites
+
+- Node.js 20+
+- pnpm 10+
+
+### Install
 
 ```bash
 pnpm install
 ```
 
-### 2. 初始化数据库
+### Environment
+
+Copy the example environment file:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+At minimum, set:
+
+```env
+JWT_SECRET=replace-with-a-strong-secret
+```
+
+### Initialize the database
 
 ```bash
 pnpm db:generate
 pnpm db:push
 ```
 
-### 3. 配置环境变量
-
-复制：
-
-```bash
-backend/.env.example -> backend/.env
-```
-
-至少修改：
-
-```env
-JWT_SECRET=your-secret
-```
-
-### 4. 启动开发环境
+### Start development
 
 ```bash
 pnpm dev
 ```
 
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:3000
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:3123`
 
-## 构建
+## Build
 
 ```bash
 pnpm build
 ```
 
-构建后可启动后端产物：
+Run the backend after build:
 
 ```bash
-pnpm --filter @formagents/backend start
+pnpm --filter @surveysim/backend start
 ```
 
-## 当前 MVP 能力
+## Development
 
-- 参与者模板管理
-- LLM 配置管理
-- 问卷导入 / 编辑 / 保存
-- Mock run 执行与状态跟踪
-- 基础报表
-- JSON / CSV / HTML 导出
+Useful workspace commands:
 
-## 说明
+```bash
+pnpm dev
+pnpm build
+pnpm lint
+pnpm test
+pnpm db:generate
+pnpm db:push
+pnpm db:studio
+```
 
-- 当前默认数据库为 SQLite，后续可切 PostgreSQL
-- LLM 接口按 OpenAI-compatible 方式接入
-- 这是可运行 MVP，适合继续迭代功能和 UI
+## Core Workflows
+
+### 1. Configure model providers
+
+Add one or more OpenAI-compatible LLM endpoints, test connectivity, and choose a default provider for downstream tasks.
+
+### 2. Define participant templates
+
+Build reusable audience templates with demographic and behavioral rules, weighted distributions, and scoped overrides.
+
+### 3. Import surveys
+
+Paste raw questionnaire text or upload text files, then review structured extraction results before saving.
+
+### 4. Run simulations
+
+Create a simulation batch by selecting a participant template, a survey, and an LLM configuration.
+
+### 5. Analyze and export
+
+Inspect run progress, review generated responses, compare runs, and export results as JSON, CSV, or HTML.
+
+## Deployment
+
+SurveySim can be deployed as a single backend process that also serves the built frontend assets.
+
+### Recommended setup
+
+- Linux server
+- Node.js 20+
+- pnpm 10+
+- PM2 for process management
+- Nginx for reverse proxy
+
+### Example deployment flow
+
+```bash
+git clone <your-repo-url> /srv/surveysim
+cd /srv/surveysim
+pnpm install --frozen-lockfile
+cp backend/.env.example backend/.env
+pnpm db:generate
+pnpm db:push
+pnpm build
+cd backend
+pm2 start dist/index.js --name surveysim
+```
+
+### Example Nginx config
+
+```nginx
+server {
+  listen 80;
+  server_name your-domain.com;
+
+  client_max_body_size 50m;
+
+  location / {
+    proxy_pass http://127.0.0.1:3123;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+## Data and Runtime Files
+
+By default, SurveySim stores runtime data in:
+
+- `backend/dev.db`
+- `backend/storage/runtime/`
+- `backend/.env`
+
+If you are using SQLite in production, make sure these files are backed up.
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+If you plan to make a larger change, open an issue first so the direction can be discussed before implementation.
+
+## Roadmap
+
+- Improve import robustness for more questionnaire formats
+- Expand reporting and comparison capabilities
+- Add more observability around long-running generation tasks
+- Support alternative production database backends
+
+## License
+
+Add a license file before publishing the repository publicly.

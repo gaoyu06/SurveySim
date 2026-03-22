@@ -11,5 +11,6 @@ export async function surveyRoutes(app: FastifyInstance) {
   app.post("/import/stream", auth, controller.importDraftStream as any);
   app.post("/import/retry-record", auth, controller.retryImportRecord as any);
   app.post("/", auth, controller.create as any);
+  app.delete("/:id", auth, controller.delete as any);
   app.put("/:id", auth, controller.update as any);
 }

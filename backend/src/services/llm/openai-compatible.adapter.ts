@@ -17,6 +17,10 @@ export interface ChatMessage {
   content: string;
 }
 
+interface RequestOptions {
+  signal?: AbortSignal;
+}
+
 interface ChatCompletionResponse {
   choices?: Array<{
     message?: {
@@ -67,14 +71,43 @@ function isAbortTimeoutError(error: unknown) {
   return error.name === "AbortError" || /timeout/i.test(error.message);
 }
 
+function mergeAbortSignals(...signals: Array<AbortSignal | undefined>) {
+  const available = signals.filter((signal): signal is AbortSignal => Boolean(signal));
+  if (available.length === 0) return undefined;
+  if (available.length === 1) return available[0];
+
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort(new Error("Aborted"));
+    }
+  };
+
+  for (const signal of available) {
+    if (signal.aborted) {
+      abort();
+      break;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+  }
+
+  return controller.signal;
+}
+
 export class OpenAiCompatibleAdapter {
-  async chatText(config: LlmRuntimeConfig, messages: ChatMessage[], overrides?: Partial<Pick<LlmRuntimeConfig, "temperature" | "maxTokens" | "timeoutMs">>) {
+  async chatText(
+    config: LlmRuntimeConfig,
+    messages: ChatMessage[],
+    overrides?: Partial<Pick<LlmRuntimeConfig, "temperature" | "maxTokens" | "timeoutMs">>,
+    options?: RequestOptions,
+  ) {
     const attempts = Math.max(1, (config.retryCount ?? 0) + 1);
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(new Error("Timeout")), overrides?.timeoutMs ?? config.timeoutMs);
+      const signal = mergeAbortSignals(controller.signal, options?.signal);
 
       try {
         const response = await fetch(normalizeBaseUrl(config.baseUrl), {
@@ -83,7 +116,7 @@ export class OpenAiCompatibleAdapter {
             "Content-Type": "application/json",
             Authorization: `Bearer ${config.apiKey}`,
           },
-          signal: controller.signal,
+          signal,
           body: JSON.stringify({
             model: config.model,
             messages,
@@ -113,8 +146,8 @@ export class OpenAiCompatibleAdapter {
     throw new Error(lastError instanceof Error ? lastError.message : String(lastError));
   }
 
-  async chatJson<T>(config: LlmRuntimeConfig, messages: ChatMessage[], fixerPrompt?: string): Promise<T> {
-    const raw = await this.chatText(config, messages);
+  async chatJson<T>(config: LlmRuntimeConfig, messages: ChatMessage[], fixerPrompt?: string, options?: RequestOptions): Promise<T> {
+    const raw = await this.chatText(config, messages, undefined, options);
     const parsed = this.tryParse<T>(raw);
     if (parsed.ok) {
       return parsed.value;
@@ -128,6 +161,7 @@ export class OpenAiCompatibleAdapter {
           { role: "user", content: `${fixerPrompt}\n\nInvalid JSON:\n${raw}` },
         ],
         { temperature: 0.1 },
+        options,
       );
       const retried = this.tryParse<T>(repaired);
       if (retried.ok) {
@@ -143,8 +177,9 @@ export class OpenAiCompatibleAdapter {
     messages: ChatMessage[],
     fixerPrompt: string | undefined,
     onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
+    options?: RequestOptions,
   ): Promise<T> {
-    const raw = await this.chatTextStream(config, messages, onEvent);
+    const raw = await this.chatTextStream(config, messages, onEvent, options);
     const parsed = this.tryParse<T>(raw);
     if (parsed.ok) {
       return parsed.value;
@@ -160,6 +195,7 @@ export class OpenAiCompatibleAdapter {
           { role: "user", content: `${fixerPrompt}\n\nInvalid JSON:\n${raw}` },
         ],
         { temperature: 0.1 },
+        options,
       );
       const retried = this.tryParse<T>(repaired);
       if (retried.ok) {
@@ -192,14 +228,16 @@ export class OpenAiCompatibleAdapter {
     config: LlmRuntimeConfig,
     messages: ChatMessage[],
     onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
+    options?: RequestOptions,
   ) {
-    return this.chatTextStream(config, messages, onEvent);
+    return this.chatTextStream(config, messages, onEvent, options);
   }
 
   private async chatTextStream(
     config: LlmRuntimeConfig,
     messages: ChatMessage[],
     onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
+    options?: RequestOptions,
   ) {
     const attempts = Math.max(1, (config.retryCount ?? 0) + 1);
     let lastError: unknown;
@@ -207,6 +245,7 @@ export class OpenAiCompatibleAdapter {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const controller = new AbortController();
       let idleTimeout: ReturnType<typeof setTimeout> | null = null;
+      const signal = mergeAbortSignals(controller.signal, options?.signal);
       const resetIdleTimeout = () => {
         if (idleTimeout) {
           clearTimeout(idleTimeout);
@@ -222,7 +261,7 @@ export class OpenAiCompatibleAdapter {
             "Content-Type": "application/json",
             Authorization: `Bearer ${config.apiKey}`,
           },
-          signal: controller.signal,
+          signal,
           body: JSON.stringify({
             model: config.model,
             messages,

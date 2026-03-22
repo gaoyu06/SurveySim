@@ -3,7 +3,7 @@ import {
   testConnectionInputSchema,
   type LlmProviderConfigDto,
   type LlmProviderConfigInput,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 import { llmConfigRepository } from "../../repositories/llm-config.repository.js";
 import { maskApiKey } from "../../utils/crypto.js";
 import { toIsoString } from "../../utils/serialize.js";
@@ -101,8 +101,13 @@ export class LlmService {
     return { ok };
   }
 
-  async generateJson<T>(config: LlmRuntimeConfig, messages: ChatMessage[], fixerPrompt: string) {
-    return this.adapter.chatJson<T>(config, messages, fixerPrompt);
+  async generateJson<T>(
+    config: LlmRuntimeConfig,
+    messages: ChatMessage[],
+    fixerPrompt: string,
+    options?: { signal?: AbortSignal },
+  ) {
+    return this.adapter.chatJson<T>(config, messages, fixerPrompt, options);
   }
 
   async generateJsonWithEvents<T>(
@@ -110,19 +115,21 @@ export class LlmService {
     messages: ChatMessage[],
     fixerPrompt: string,
     onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
+    options?: { signal?: AbortSignal },
   ) {
-    return this.adapter.chatJsonWithEvents<T>(config, messages, fixerPrompt, onEvent);
+    return this.adapter.chatJsonWithEvents<T>(config, messages, fixerPrompt, onEvent, options);
   }
 
   async generateTextStream(
     config: LlmRuntimeConfig,
     messages: ChatMessage[],
     onEvent?: (event: { type: "delta" | "status"; chunk?: string; message?: string }) => Promise<void> | void,
+    options?: { signal?: AbortSignal },
   ) {
-    return this.adapter.streamText(config, messages, onEvent);
+    return this.adapter.streamText(config, messages, onEvent, options);
   }
 
-  async generateText(config: LlmRuntimeConfig, messages: ChatMessage[]) {
-    return this.adapter.chatText(config, messages);
+  async generateText(config: LlmRuntimeConfig, messages: ChatMessage[], options?: { signal?: AbortSignal }) {
+    return this.adapter.chatText(config, messages, undefined, options);
   }
 }

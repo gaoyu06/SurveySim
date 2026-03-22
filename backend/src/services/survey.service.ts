@@ -12,7 +12,7 @@ import {
   type SurveyImportRecordEvent,
   type SurveyImportStreamEvent,
   type SurveySchemaDto,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 import { fromJson } from "../lib/json.js";
 import { surveyRepository } from "../repositories/survey.repository.js";
 import { LlmService } from "./llm/llm.service.js";
@@ -106,6 +106,21 @@ export class SurveyService {
     const survey = await surveyRepository.getById(userId, id);
     if (!survey) throw new Error("Survey not found");
     return mapSurvey(survey);
+  }
+
+  async delete(userId: string, id: string) {
+    const existing = await surveyRepository.getById(userId, id);
+    if (!existing) {
+      throw new Error("Survey not found");
+    }
+
+    const referencingRuns = await surveyRepository.countReferencingRuns(userId, id);
+    if (referencingRuns > 0) {
+      throw new Error(`This survey is used by ${referencingRuns} mock run(s) and cannot be deleted`);
+    }
+
+    await surveyRepository.delete(userId, id);
+    return { success: true };
   }
 
   async importDraft(userId: string, input: unknown): Promise<SurveyDraft> {

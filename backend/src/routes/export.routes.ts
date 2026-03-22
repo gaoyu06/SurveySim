@@ -7,5 +7,6 @@ export async function exportRoutes(app: FastifyInstance) {
   const auth = { preHandler: [app.authenticate] };
   app.get("/:runId/json", auth, controller.json as any);
   app.get("/:runId/csv", auth, controller.csv as any);
+  app.get("/:runId/open-text-csv", auth, controller.openTextCsv as any);
   app.get("/:runId/html", auth, controller.html as any);
 }

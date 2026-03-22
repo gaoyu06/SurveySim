@@ -2,7 +2,7 @@ import {
   getBuiltinParticipantAttributes,
   participantTemplateAiGenerateJsonlRecordSchema,
   type ParticipantAttributeDefinitionDto,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 import { renderSchemaGuide } from "./prompt-support/schema-text.js";
 import { renderPromptSections } from "./prompt-support/prompt-sections.js";
 
@@ -42,7 +42,7 @@ export function buildParticipantTemplateGenerateJsonlTask(input: BuildParticipan
       {
         role: "system" as const,
         content: [
-          "You design structured participant template rules for FormAgents.",
+          "You design structured participant template rules for SurveySim.",
           "Return JSONL only.",
           "Each line must be exactly one valid record.",
           "First emit one template record.",

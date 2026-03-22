@@ -5,7 +5,7 @@ import {
   type ConditionExpression,
   type ParticipantAttributeDefinitionDto,
   type ParticipantRuleInput,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 import { Button, Form, Input, InputNumber, Select, Space, Switch, Typography } from "antd";
 import { useMemo } from "react";
 import { useI18n } from "@/i18n/I18nProvider";

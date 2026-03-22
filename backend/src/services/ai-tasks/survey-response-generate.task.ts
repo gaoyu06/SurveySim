@@ -1,4 +1,4 @@
-import { questionTypeSchema, responseGenerationPayloadSchema, structuredAnswerSchema } from "@formagents/shared";
+import { questionTypeSchema, responseGenerationPayloadSchema, structuredAnswerSchema } from "@surveysim/shared";
 import { z } from "zod";
 import { buildJsonFixerPrompt, renderEnumValues, renderSchemaGuide } from "./prompt-support/schema-text.js";
 import { renderPromptSections } from "./prompt-support/prompt-sections.js";
@@ -22,6 +22,10 @@ export function buildSurveyResponseGenerateTask(input: {
     extraSystemPrompt: input.extraSystemPrompt,
     extraRespondentPrompt: input.extraRespondentPrompt,
   });
+  const interactiveQuestionIds = payload.survey.sections
+    .flatMap((section) => section.questions)
+    .filter((question) => !["paragraph", "section_title", "respondent_instruction"].includes(question.type))
+    .map((question) => question.id);
 
   return {
     messages: [
@@ -42,9 +46,11 @@ export function buildSurveyResponseGenerateTask(input: {
             title: "Task",
             lines: [
               "Fill the survey as the provided respondent.",
+              "Required interactive questions must be answered. Optional questions may be skipped when appropriate.",
               "Respect required questions and question validation.",
               "Use exact questionId values and exact option ids from the survey schema.",
               "Do not answer paragraph, section_title, or respondent_instruction blocks.",
+              `Return exactly ${interactiveQuestionIds.length} answer objects, one for each interactive question, in survey order.`,
             ],
           },
           {
@@ -63,8 +69,11 @@ export function buildSurveyResponseGenerateTask(input: {
             title: "Answering Rules",
             lines: [
               "Return JSON only with top-level key answers.",
+              "Every interactive question must appear exactly once in answers.",
               "For choice questions, return selectedOptionIds using the exact option ids from the survey.",
-              "For matrix_single_choice questions, return matrixAnswers. Each matrixAnswers item must contain rowId and exactly one selectedOptionIds entry, where the selected option id must be one of the matrix column ids.",
+              "For required single_choice and single_choice_other, select exactly one option. Optional questions may be skipped with isSkipped=true.",
+              "For multi_choice and multi_choice_other, satisfy minSelections/maxSelections when provided. Optional questions without explicit min may choose zero options or skip.",
+              "For matrix_single_choice questions, return matrixAnswers. Required questions must answer every matrix row.",
               "Do not flatten matrix answers into selectedOptionIds at the question level.",
               "Use otherText only when the question supports other input and the answer needs custom text.",
               "Use ratingValue only for rating questions.",
@@ -76,6 +85,12 @@ export function buildSurveyResponseGenerateTask(input: {
             title: "Matrix Answer Example",
             lines: [
               '{"answers":[{"questionId":"q_matrix_1","matrixAnswers":[{"rowId":"row_1","selectedOptionIds":["col_2"]},{"rowId":"row_2","selectedOptionIds":["col_4"]}]}]}',
+            ],
+          },
+          {
+            title: "Required Answer Coverage",
+            lines: [
+              JSON.stringify(interactiveQuestionIds),
             ],
           },
           {

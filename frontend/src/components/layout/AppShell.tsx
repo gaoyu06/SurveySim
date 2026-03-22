@@ -1,6 +1,6 @@
 import { DatabaseOutlined, ExperimentOutlined, FileTextOutlined, RadarChartOutlined, SettingOutlined, TeamOutlined } from "@ant-design/icons";
 import { Button, Layout, Menu, Select, Space, Typography } from "antd";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useI18n } from "@/i18n/I18nProvider";
 import { authStore } from "@/stores/auth.store";
@@ -14,6 +14,11 @@ export function AppShell() {
   const { locale, setLocale, t } = useI18n();
   const user = authStore((state) => state.user);
   const clearSession = authStore((state) => state.clearSession);
+
+  useEffect(() => {
+    document.body.classList.add("app-shell-body");
+    return () => document.body.classList.remove("app-shell-body");
+  }, []);
 
   const items = useMemo(
     () => [
@@ -36,16 +41,18 @@ export function AppShell() {
           <div className="brand-title">{t("common.appName")}</div>
           <div className="brand-subtitle">{t("shell.subtitle")}</div>
         </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[location.pathname === "/" ? "/" : `/${location.pathname.split("/")[1]}`]}
-          items={items}
-          onClick={({ key }) => navigate(key)}
-          style={{ background: "transparent", borderInlineEnd: "none", marginTop: 12 }}
-        />
+        <div className="sider-menu-scroll">
+          <Menu
+            theme="dark"
+            mode="inline"
+            selectedKeys={[location.pathname === "/" ? "/" : `/${location.pathname.split("/")[1]}`]}
+            items={items}
+            onClick={({ key }) => navigate(key)}
+            style={{ background: "transparent", borderInlineEnd: "none", marginTop: 12 }}
+          />
+        </div>
       </Sider>
-      <Layout>
+      <Layout className="app-main-shell">
         <Header className="app-topbar">
           <Space direction="vertical" size={0} style={{ minWidth: 0, flex: 1 }}>
             <Typography.Text className="topbar-label">
@@ -85,7 +92,9 @@ export function AppShell() {
           </Space>
         </Header>
         <Content className="page-wrap">
-          <Outlet />
+          <div className="page-scroll-body">
+            <Outlet />
+          </div>
         </Content>
       </Layout>
     </Layout>

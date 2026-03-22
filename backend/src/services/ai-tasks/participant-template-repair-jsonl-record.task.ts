@@ -1,4 +1,4 @@
-import { participantTemplateAiGenerateJsonlRecordSchema } from "@formagents/shared";
+import { participantTemplateAiGenerateJsonlRecordSchema } from "@surveysim/shared";
 import { buildJsonFixerPrompt, renderSchemaGuide } from "./prompt-support/schema-text.js";
 import { renderPromptSections } from "./prompt-support/prompt-sections.js";
 
@@ -12,7 +12,7 @@ export function buildParticipantTemplateRepairJsonlRecordTask(input: {
       {
         role: "system" as const,
         content: [
-          "You repair one invalid participant-template JSONL record for FormAgents.",
+          "You repair one invalid participant-template JSONL record for SurveySim.",
           "Return exactly one corrected JSON object only.",
           "Do not explain the fix. Do not use markdown fences.",
         ].join(" "),

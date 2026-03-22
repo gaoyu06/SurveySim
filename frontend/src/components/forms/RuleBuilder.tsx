@@ -1,5 +1,5 @@
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { ATTRIBUTE_KEYS, type ConditionExpression, type ParticipantRuleInput } from "@formagents/shared";
+import { ATTRIBUTE_KEYS, ATTRIBUTE_VALUE_PRESETS, MULTI_VALUE_ATTRIBUTES, type ConditionExpression, type ParticipantRuleInput } from "@surveysim/shared";
 import { Button, Form, Input, InputNumber, Select, Space, Switch, Typography } from "antd";
 import { useMemo } from "react";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -21,23 +21,6 @@ function createLeafCondition(defaultField: string): ConditionExpression {
   return { type: "leaf", field: defaultField, operator: "eq", value: "" };
 }
 
-function parseDistribution(text: string) {
-  return text
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [value, percentage] = line.split(":").map((item) => item.trim());
-      return { value, percentage: Number(percentage) };
-    });
-}
-
-function distributionToText(rule: ParticipantRuleInput) {
-  return (rule.assignment.distribution ?? [])
-    .map((item) => `${Array.isArray(item.value) ? item.value.join("|") : item.value}: ${item.percentage}`)
-    .join("\n");
-}
-
 function parseConditionValue(value: string) {
   return value.includes(",") ? value.split(",").map((item) => item.trim()).filter(Boolean) : value;
 }
@@ -46,6 +29,51 @@ function stringifyValue(value: unknown) {
   if (Array.isArray(value)) return value.join(",");
   if (value == null) return "";
   return String(value);
+}
+
+function toScopeGroup(scope: ConditionExpression | undefined, defaultField: string): Extract<ConditionExpression, { type: "group" }> {
+  if (!scope) {
+    return { type: "group", combinator: "AND", children: [] };
+  }
+
+  if (scope.type === "group") {
+    return {
+      type: "group",
+      combinator: scope.combinator ?? "AND",
+      children: Array.isArray(scope.children) ? scope.children : [],
+    };
+  }
+
+  return {
+    type: "group",
+    combinator: "AND",
+    children: [scope.field ? scope : createLeafCondition(defaultField)],
+  };
+}
+
+function normalizeDistribution(rule: ParticipantRuleInput, attribute: string) {
+  if (rule.assignment.mode !== "distribution") {
+    return undefined;
+  }
+
+  const distribution = Array.isArray(rule.assignment.distribution) ? rule.assignment.distribution : [];
+  if (distribution.length) {
+    return distribution;
+  }
+
+  const presets = ATTRIBUTE_VALUE_PRESETS[attribute] ?? [];
+  return [
+    {
+      value: presets[0]?.value ?? "segment_a",
+      percentage: 50,
+      label: presets[0]?.label,
+    },
+    {
+      value: presets[1]?.value ?? "segment_b",
+      percentage: 50,
+      label: presets[1]?.label,
+    },
+  ];
 }
 
 export function RuleBuilder({
@@ -66,6 +94,9 @@ export function RuleBuilder({
   }, [attributeOptions]);
   const defaultAttribute = resolvedAttributeOptions[0] ?? "gender";
 
+  const getValueOptions = (attribute: string) => ATTRIBUTE_VALUE_PRESETS[attribute] ?? [];
+  const isMultiValueAttribute = (attribute: string) => MULTI_VALUE_ATTRIBUTES.includes(attribute as (typeof MULTI_VALUE_ATTRIBUTES)[number]);
+
   const updateRule = (index: number, patch: Partial<ParticipantRuleInput>) => {
     const next = [...value];
     next[index] = { ...next[index], ...patch };
@@ -74,7 +105,7 @@ export function RuleBuilder({
 
   const updateScopeLeaf = (index: number, conditionIndex: number, patch: Partial<ConditionExpression>) => {
     const next = [...value];
-    const scope = (next[index].scope as Extract<ConditionExpression, { type: "group" }>) ?? { type: "group", combinator: "AND", children: [] };
+    const scope = toScopeGroup(next[index].scope, defaultAttribute);
     const children = [...scope.children];
     children[conditionIndex] = { ...(children[conditionIndex] as ConditionExpression), ...patch } as ConditionExpression;
     next[index] = { ...next[index], scope: { ...scope, children } };
@@ -83,14 +114,14 @@ export function RuleBuilder({
 
   const addCondition = (index: number) => {
     const next = [...value];
-    const scope = (next[index].scope as Extract<ConditionExpression, { type: "group" }>) ?? { type: "group", combinator: "AND", children: [] };
+    const scope = toScopeGroup(next[index].scope, defaultAttribute);
     next[index] = { ...next[index], scope: { ...scope, children: [...scope.children, createLeafCondition(defaultAttribute)] } };
     onChange(next);
   };
 
   const removeCondition = (index: number, conditionIndex: number) => {
     const next = [...value];
-    const scope = next[index].scope as Extract<ConditionExpression, { type: "group" }> | undefined;
+    const scope = next[index].scope ? toScopeGroup(next[index].scope, defaultAttribute) : undefined;
     if (!scope) return;
     const children = scope.children.filter((_: ConditionExpression, itemIndex: number) => itemIndex !== conditionIndex);
     next[index] = { ...next[index], scope: children.length ? { ...scope, children } : undefined };
@@ -103,19 +134,80 @@ export function RuleBuilder({
     onChange(next);
   };
 
+  const updateDistributionItem = (
+    ruleIndex: number,
+    itemIndex: number,
+    patch: Partial<NonNullable<ParticipantRuleInput["assignment"]["distribution"]>[number]>,
+  ) => {
+    const next = [...value];
+    const distribution = [...(next[ruleIndex].assignment.distribution ?? [])];
+    distribution[itemIndex] = { ...distribution[itemIndex], ...patch };
+    next[ruleIndex] = {
+      ...next[ruleIndex],
+      assignment: {
+        ...next[ruleIndex].assignment,
+        distribution,
+      },
+    };
+    onChange(next);
+  };
+
+  const addDistributionItem = (ruleIndex: number) => {
+    const next = [...value];
+    const attribute = next[ruleIndex].assignment.attribute;
+    const presets = getValueOptions(attribute);
+    const fallback = presets[0]?.value ?? "segment";
+    next[ruleIndex] = {
+      ...next[ruleIndex],
+      assignment: {
+        ...next[ruleIndex].assignment,
+        distribution: [
+          ...(next[ruleIndex].assignment.distribution ?? []),
+          {
+            value: isMultiValueAttribute(attribute) ? [fallback] : fallback,
+            percentage: 0,
+            label: presets[0]?.label,
+          },
+        ],
+      },
+    };
+    onChange(next);
+  };
+
+  const removeDistributionItem = (ruleIndex: number, itemIndex: number) => {
+    const next = [...value];
+    next[ruleIndex] = {
+      ...next[ruleIndex],
+      assignment: {
+        ...next[ruleIndex].assignment,
+        distribution: (next[ruleIndex].assignment.distribution ?? []).filter((_, index) => index !== itemIndex),
+      },
+    };
+    onChange(next);
+  };
+
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={14}>
       {value.map((rule, index) => {
-        const scope = (rule.scope as Extract<ConditionExpression, { type: "group" }>) ?? { type: "group", combinator: "AND", children: [] };
+        const normalizedRule: ParticipantRuleInput = {
+          ...rule,
+          scope: rule.scope,
+          assignment: {
+            ...rule.assignment,
+            attribute: rule.assignment.attribute || defaultAttribute,
+            distribution: normalizeDistribution(rule, rule.assignment.attribute || defaultAttribute),
+          },
+        };
+        const scope = toScopeGroup(normalizedRule.scope, defaultAttribute);
         return (
-          <div key={`${rule.name}-${index}`} className="rule-card">
+          <div key={`${normalizedRule.name}-${index}`} className="rule-card">
             <Space align="start" style={{ width: "100%", justifyContent: "space-between" }}>
               <div>
                 <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
-                  {rule.name || t("ruleBuilder.rule", { index: index + 1 })}
+                  {normalizedRule.name || t("ruleBuilder.rule", { index: index + 1 })}
                 </Typography.Title>
                 <Typography.Text type="secondary">
-                  {t("ruleBuilder.priority")}: {rule.priority}
+                  {t("ruleBuilder.priority")}: {normalizedRule.priority}
                 </Typography.Text>
               </div>
               <Button danger icon={<DeleteOutlined />} onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))} />
@@ -123,26 +215,46 @@ export function RuleBuilder({
 
             <Form layout="vertical" style={{ marginTop: 16 }}>
               <Form.Item label={t("ruleBuilder.ruleName")}>
-                <Input value={rule.name} onChange={(event) => updateRule(index, { name: event.target.value })} />
+                <Input value={normalizedRule.name} onChange={(event) => updateRule(index, { name: event.target.value })} />
               </Form.Item>
               <Space style={{ width: "100%" }} align="start" wrap>
                 <Form.Item label={t("ruleBuilder.enabled")}>
-                  <Switch checked={rule.enabled} onChange={(checked) => updateRule(index, { enabled: checked })} />
+                  <Switch checked={normalizedRule.enabled} onChange={(checked) => updateRule(index, { enabled: checked })} />
                 </Form.Item>
                 <Form.Item label={t("ruleBuilder.priority")}>
-                  <InputNumber min={0} max={1000} value={rule.priority} onChange={(nextValue) => updateRule(index, { priority: nextValue ?? 0 })} />
+                  <InputNumber min={0} max={1000} value={normalizedRule.priority} onChange={(nextValue) => updateRule(index, { priority: nextValue ?? 0 })} />
                 </Form.Item>
                 <Form.Item label={t("ruleBuilder.targetAttribute")}>
                   <Select
-                    value={rule.assignment.attribute}
+                    value={normalizedRule.assignment.attribute}
                     style={{ width: 180 }}
                     options={resolvedAttributeOptions.map((option) => ({ label: t(`attributes.${option}`), value: option }))}
-                    onChange={(attribute) => updateRule(index, { assignment: { ...rule.assignment, attribute } })}
+                    onChange={(attribute) =>
+                      updateRule(index, {
+                        assignment: {
+                          ...normalizedRule.assignment,
+                          attribute,
+                          distribution:
+                            normalizedRule.assignment.mode === "distribution"
+                              ? (normalizedRule.assignment.distribution ?? []).map((item, itemIndex) => ({
+                                  ...item,
+                                  value: isMultiValueAttribute(attribute)
+                                    ? Array.isArray(item.value)
+                                      ? item.value
+                                      : [String(item.value)]
+                                    : Array.isArray(item.value)
+                                      ? item.value[0] ?? getValueOptions(attribute)[0]?.value ?? `segment_${itemIndex + 1}`
+                                      : item.value,
+                                }))
+                              : normalizedRule.assignment.distribution,
+                        },
+                      })
+                    }
                   />
                 </Form.Item>
                 <Form.Item label={t("ruleBuilder.assignmentMode")}>
                   <Select
-                    value={rule.assignment.mode}
+                    value={normalizedRule.assignment.mode}
                     style={{ width: 160 }}
                     options={[
                       { label: t("ruleBuilder.distributionMode"), value: "distribution" },
@@ -153,20 +265,20 @@ export function RuleBuilder({
                         assignment:
                           mode === "fixed"
                             ? {
-                                ...rule.assignment,
+                                ...normalizedRule.assignment,
                                 mode,
-                                fixedValue: stringifyValue(rule.assignment.fixedValue) || "",
+                                fixedValue: stringifyValue(normalizedRule.assignment.fixedValue) || "",
                                 distribution: undefined,
                               }
                             : {
-                                ...rule.assignment,
+                                ...normalizedRule.assignment,
                                 mode,
                                 distribution:
-                                  rule.assignment.distribution?.length
-                                    ? rule.assignment.distribution
+                                  normalizedRule.assignment.distribution?.length
+                                    ? normalizedRule.assignment.distribution
                                     : [
-                                        { value: "segment_a", percentage: 50 },
-                                        { value: "segment_b", percentage: 50 },
+                                        { value: getValueOptions(normalizedRule.assignment.attribute)[0]?.value ?? "segment_a", percentage: 50, label: getValueOptions(normalizedRule.assignment.attribute)[0]?.label },
+                                        { value: getValueOptions(normalizedRule.assignment.attribute)[1]?.value ?? "segment_b", percentage: 50, label: getValueOptions(normalizedRule.assignment.attribute)[1]?.label },
                                       ],
                                 fixedValue: undefined,
                               },
@@ -233,24 +345,57 @@ export function RuleBuilder({
                 ))}
               </Space>
 
-              {rule.assignment.mode === "fixed" ? (
+              {normalizedRule.assignment.mode === "fixed" ? (
                 <Form.Item label={t("ruleBuilder.fixedValue")} style={{ marginTop: 12 }}>
                   <Input
-                    value={stringifyValue(rule.assignment.fixedValue)}
+                    value={stringifyValue(normalizedRule.assignment.fixedValue)}
                     onChange={(event) =>
                       updateRule(index, {
-                        assignment: { ...rule.assignment, fixedValue: parseConditionValue(event.target.value) },
+                        assignment: { ...normalizedRule.assignment, fixedValue: parseConditionValue(event.target.value) },
                       })
                     }
                   />
                 </Form.Item>
               ) : (
                 <Form.Item label={t("ruleBuilder.distribution")} style={{ marginTop: 12 }}>
-                  <Input.TextArea
-                    rows={5}
-                    value={distributionToText(rule)}
-                    onChange={(event) => updateRule(index, { assignment: { ...rule.assignment, distribution: parseDistribution(event.target.value) } })}
-                  />
+                  <Space direction="vertical" style={{ width: "100%" }} size={10}>
+                    {(normalizedRule.assignment.distribution ?? []).map((item, itemIndex) => (
+                      <div key={`${normalizedRule.assignment.attribute}_${itemIndex}`} className="condition-row">
+                        <Select
+                          mode={isMultiValueAttribute(normalizedRule.assignment.attribute) ? "multiple" : undefined}
+                          value={item.value}
+                          options={getValueOptions(normalizedRule.assignment.attribute)}
+                          placeholder={t("ruleBuilder.distributionValue")}
+                          onChange={(nextValue, selectedOptions) =>
+                            updateDistributionItem(index, itemIndex, {
+                              value: nextValue as string | string[],
+                              label: Array.isArray(selectedOptions)
+                                ? selectedOptions.map((option) => ("label" in option ? String(option.label) : "")).filter(Boolean).join(", ")
+                                : "label" in (selectedOptions ?? {}) ? String((selectedOptions as { label?: string }).label) : undefined,
+                            })
+                          }
+                        />
+                        <InputNumber
+                          min={0}
+                          max={100}
+                          value={item.percentage}
+                          style={{ width: "100%" }}
+                          placeholder={t("ruleBuilder.distributionPercentage")}
+                          onChange={(percentage) => updateDistributionItem(index, itemIndex, { percentage: percentage ?? 0 })}
+                        />
+                        <Input
+                          value={item.label}
+                          placeholder={t("ruleBuilder.distributionLabel")}
+                          onChange={(event) => updateDistributionItem(index, itemIndex, { label: event.target.value || undefined })}
+                        />
+                        <Button danger type="text" icon={<DeleteOutlined />} onClick={() => removeDistributionItem(index, itemIndex)} />
+                      </div>
+                    ))}
+                    <div className="subtle-help">{t("ruleBuilder.distributionHint")}</div>
+                    <Button icon={<PlusOutlined />} onClick={() => addDistributionItem(index)}>
+                      {t("ruleBuilder.addDistributionItem")}
+                    </Button>
+                  </Space>
                 </Form.Item>
               )}
             </Form>
@@ -274,8 +419,8 @@ export function RuleBuilder({
                 attribute: defaultAttribute,
                 mode: "distribution",
                 distribution: [
-                  { value: "segment_a", percentage: 50 },
-                  { value: "segment_b", percentage: 50 },
+                  { value: getValueOptions(defaultAttribute)[0]?.value ?? "segment_a", percentage: 50, label: getValueOptions(defaultAttribute)[0]?.label },
+                  { value: getValueOptions(defaultAttribute)[1]?.value ?? "segment_b", percentage: 50, label: getValueOptions(defaultAttribute)[1]?.label },
                 ],
               },
             },

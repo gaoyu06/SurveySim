@@ -1,4 +1,4 @@
-import { personaGenerationPayloadSchema } from "@formagents/shared";
+import { personaGenerationPayloadSchema } from "@surveysim/shared";
 import { z } from "zod";
 import { buildJsonFixerPrompt, renderSchemaGuide } from "./prompt-support/schema-text.js";
 import { renderPromptSections } from "./prompt-support/prompt-sections.js";
@@ -40,6 +40,8 @@ export function buildPersonaGenerateTask(input: {
               "The persona must remain consistent with the provided identity.",
               "Add background details unrelated to the questionnaire when useful.",
               "Avoid turning the persona into a generic list of labels.",
+              "Reflect hidden response tendencies such as fatigue, confidence, central-tendency bias, extremity bias, and willingness to skip optional questions when they are mild but realistic.",
+              "Do not systematically make the respondent decisive, polished, or extreme unless the identity noise clearly supports that.",
             ],
           },
           {

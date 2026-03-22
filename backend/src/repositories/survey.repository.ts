@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import type { SurveySaveInput } from "@formagents/shared";
+import type { SurveySaveInput } from "@surveysim/shared";
 import { prisma } from "../lib/db.js";
 import { toJson } from "../lib/json.js";
 
@@ -67,6 +67,14 @@ export const surveyRepository = {
       include: includeSurveyRelations,
     });
   },
+  countReferencingRuns(userId: string, id: string) {
+    return prisma.mockRun.count({
+      where: {
+        userId,
+        surveyId: id,
+      },
+    });
+  },
   async create(userId: string, input: SurveySaveInput) {
     return prisma.$transaction(async (tx) => {
       const survey = await tx.survey.create({
@@ -106,6 +114,14 @@ export const surveyRepository = {
 
       await persistSurveyGraph(tx as any, id, input);
       return tx.survey.findUniqueOrThrow({ where: { id }, include: includeSurveyRelations });
+    });
+  },
+  delete(userId: string, id: string) {
+    return prisma.$transaction(async (tx) => {
+      await tx.surveyOption.deleteMany({ where: { question: { surveyId: id } } });
+      await tx.surveyQuestion.deleteMany({ where: { surveyId: id } });
+      await tx.surveySection.deleteMany({ where: { surveyId: id } });
+      return tx.survey.deleteMany({ where: { userId, id } });
     });
   },
 };

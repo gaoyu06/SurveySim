@@ -7,11 +7,10 @@ import {
   type ReportFilter,
   type StructuredAnswer,
   type SurveySchemaDto,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 import { prisma } from "../../lib/db.js";
 import { fromJson, toJson } from "../../lib/json.js";
-import { LlmService } from "../llm/llm.service.js";
-import { buildOpenTextSummaryTask } from "../ai-tasks/index.js";
+import { readStructuredAnswers } from "../survey-response-answer-reader.js";
 
 type LoadedRun = Awaited<ReturnType<ReportService["loadRun"]>>;
 
@@ -69,9 +68,43 @@ function round(value: number) {
   return Number(value.toFixed(2));
 }
 
-export class ReportService {
-  private readonly llmService = new LlmService();
+function buildBaseQuestionMeta(
+  questionId: string,
+  title: string,
+  type: string,
+  answerCount: number,
+  totalResponses: number,
+  suggestedChart: "bar" | "pie" | "line" | "stacked_bar" | "table" | "none",
+) {
+  return {
+    questionId,
+    title,
+    type,
+    responseCount: answerCount,
+    responseRate: totalResponses ? round((answerCount / totalResponses) * 100) : 0,
+    suggestedChart,
+  };
+}
 
+function buildDiagnostics(
+  answers: Array<{
+    answer: StructuredAnswer;
+  }>,
+  totalResponses: number,
+) {
+  const skippedCount = answers.filter(({ answer }) => answer.isSkipped).length;
+  const confidenceValues = answers
+    .map(({ answer }) => answer.confidence)
+    .filter((value): value is number => typeof value === "number");
+
+  return {
+    skippedCount,
+    skippedRate: totalResponses ? round((skippedCount / totalResponses) * 100) : 0,
+    meanConfidence: confidenceValues.length ? round(confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length) : 0,
+  };
+}
+
+export class ReportService {
   async getReport(userId: string, runId: string, input: unknown): Promise<ReportDto> {
     const filters = reportFilterSchema.parse(input ?? {});
     const run = await this.loadRun(userId, runId);
@@ -145,7 +178,7 @@ export class ReportService {
       .map((participant) => ({
         identity: fromJson<ParticipantIdentity>(participant.identity),
         responseStatus: participant.surveyResponse?.status,
-        answers: (participant.surveyResponse?.answers ?? []).map((answer) => fromJson<StructuredAnswer>(answer.answer)),
+        answers: readStructuredAnswers(participant.surveyResponse),
       }))
       .filter((participant) => matchesAttributes(participant.identity, filters.attributes));
 
@@ -163,10 +196,12 @@ export class ReportService {
       for (const question of section.questions) {
         if (["paragraph", "section_title", "respondent_instruction"].includes(question.type)) continue;
         const answers = getQuestionAnswers(participants, question.id);
+        const completedResponses = participants.filter((participant) => participant.responseStatus === "COMPLETED").length;
 
         if (["single_choice", "single_choice_other"].includes(question.type)) {
+          const effectiveAnswers = answers.filter(({ answer }) => !answer.isSkipped);
           const items = question.options.map((option) => {
-            const count = answers.filter(({ answer }) => answer.selectedOptionIds.includes(option.id)).length;
+            const count = effectiveAnswers.filter(({ answer }) => answer.selectedOptionIds.includes(option.id)).length;
             return {
               label: option.label,
               count,
@@ -180,7 +215,7 @@ export class ReportService {
                   option.id,
                   Array.from(grouped.entries()).map(([label, total]) => {
                     const count = answers.filter(({ identity, answer }) => {
-                      return getGroupInfo(identity, filters.groupBy).label === label && answer.selectedOptionIds.includes(option.id);
+                      return getGroupInfo(identity, filters.groupBy).label === label && !answer.isSkipped && answer.selectedOptionIds.includes(option.id);
                     }).length;
                     return {
                       groupKey: label,
@@ -194,18 +229,21 @@ export class ReportService {
             : undefined;
 
           questionReports.push({
+            ...buildBaseQuestionMeta(question.id, question.title, question.type, answers.length, completedResponses, items.length <= 5 ? "pie" : "bar"),
             questionId: question.id,
             title: question.title,
             type: question.type,
             singleChoice: items,
             groupedSingleChoice,
+            diagnostics: buildDiagnostics(answers, completedResponses),
           });
           continue;
         }
 
         if (["multi_choice", "multi_choice_other"].includes(question.type)) {
+          const effectiveAnswers = answers.filter(({ answer }) => !answer.isSkipped);
           const items = question.options.map((option) => {
-            const count = answers.filter(({ answer }) => answer.selectedOptionIds.includes(option.id)).length;
+            const count = effectiveAnswers.filter(({ answer }) => answer.selectedOptionIds.includes(option.id)).length;
             return {
               label: option.label,
               count,
@@ -219,7 +257,7 @@ export class ReportService {
                   option.id,
                   Array.from(grouped.entries()).map(([label, total]) => {
                     const count = answers.filter(({ identity, answer }) => {
-                      return getGroupInfo(identity, filters.groupBy).label === label && answer.selectedOptionIds.includes(option.id);
+                      return getGroupInfo(identity, filters.groupBy).label === label && !answer.isSkipped && answer.selectedOptionIds.includes(option.id);
                     }).length;
                     return {
                       groupKey: label,
@@ -233,17 +271,20 @@ export class ReportService {
             : undefined;
 
           questionReports.push({
+            ...buildBaseQuestionMeta(question.id, question.title, question.type, answers.length, completedResponses, "bar"),
             questionId: question.id,
             title: question.title,
             type: question.type,
             multiChoice: items,
             groupedMultiChoice,
+            diagnostics: buildDiagnostics(answers, completedResponses),
           });
           continue;
         }
 
         if (question.type === "rating") {
           const values = answers
+            .filter(({ answer }) => !answer.isSkipped)
             .map(({ answer }) => answer.ratingValue)
             .filter((value): value is number => typeof value === "number")
             .sort((a, b) => a - b);
@@ -255,7 +296,7 @@ export class ReportService {
           const groupedRating = filters.groupBy
             ? Array.from(grouped.keys()).map((label) => {
                 const groupValues = answers
-                  .filter(({ identity, answer }) => getGroupInfo(identity, filters.groupBy).label === label && typeof answer.ratingValue === "number")
+                  .filter(({ identity, answer }) => getGroupInfo(identity, filters.groupBy).label === label && !answer.isSkipped && typeof answer.ratingValue === "number")
                   .map(({ answer }) => answer.ratingValue as number)
                   .sort((a, b) => a - b);
                 const groupMean = groupValues.length ? groupValues.reduce((sum, value) => sum + value, 0) / groupValues.length : 0;
@@ -271,6 +312,7 @@ export class ReportService {
             : undefined;
 
           questionReports.push({
+            ...buildBaseQuestionMeta(question.id, question.title, question.type, values.length, completedResponses, "line"),
             questionId: question.id,
             title: question.title,
             type: question.type,
@@ -281,6 +323,7 @@ export class ReportService {
               distribution,
             },
             groupedRating,
+            diagnostics: buildDiagnostics(answers, completedResponses),
           });
           continue;
         }
@@ -289,6 +332,7 @@ export class ReportService {
           const matrix = question.matrix;
           if (!matrix) {
             questionReports.push({
+              ...buildBaseQuestionMeta(question.id, question.title, question.type, 0, completedResponses, "table"),
               questionId: question.id,
               title: question.title,
               type: question.type,
@@ -299,6 +343,7 @@ export class ReportService {
 
           const rows = matrix.rows.map((row) => {
             const rowAnswers = answers.flatMap(({ identity, answer }) => {
+              if (answer.isSkipped) return [];
               const matrixAnswer = answer.matrixAnswers.find((item) => item.rowId === row.id);
               return matrixAnswer ? [{ identity, selectedOptionIds: matrixAnswer.selectedOptionIds }] : [];
             });
@@ -344,39 +389,24 @@ export class ReportService {
           });
 
           questionReports.push({
+            ...buildBaseQuestionMeta(question.id, question.title, question.type, answers.length, completedResponses, "stacked_bar"),
             questionId: question.id,
             title: question.title,
             type: question.type,
             matrixSingleChoice: { rows },
+            diagnostics: buildDiagnostics(answers, completedResponses),
           });
           continue;
         }
 
-        const openAnswers = answers.map(({ answer }) => answer.textAnswer ?? answer.otherText ?? "").filter(Boolean);
-        let summary: string | undefined;
-        let keywords: string[] = [];
-
-        if (openAnswers.length > 0) {
-          try {
-            const config = await this.llmService.getRuntimeConfig(run.userId, run.llmConfigId);
-            const task = buildOpenTextSummaryTask({ questionTitle: question.title, answers: openAnswers });
-            const openSummary = await this.llmService.generateJson<{ summary: string; keywords: string[] }>(
-              config,
-              task.messages,
-              task.fixerPrompt,
-            );
-            summary = openSummary.summary;
-            keywords = openSummary.keywords ?? [];
-          } catch {
-            summary = undefined;
-            keywords = [];
-          }
-        }
-
+        const openAnswers = answers
+          .filter(({ answer }) => !answer.isSkipped)
+          .map(({ answer }) => answer.textAnswer ?? answer.otherText ?? "")
+          .filter(Boolean);
         const groupedOpenText = filters.groupBy
           ? Array.from(grouped.keys()).map((label) => {
               const groupAnswers = answers
-                .filter(({ identity }) => getGroupInfo(identity, filters.groupBy).label === label)
+                .filter(({ identity, answer }) => getGroupInfo(identity, filters.groupBy).label === label && !answer.isSkipped)
                 .map(({ answer }) => answer.textAnswer ?? answer.otherText ?? "")
                 .filter(Boolean);
               return {
@@ -389,12 +419,14 @@ export class ReportService {
           : undefined;
 
         questionReports.push({
-          questionId: question.id,
-          title: question.title,
-          type: question.type,
-          openText: { answers: openAnswers, summary, keywords },
-          groupedOpenText,
-        });
+          ...buildBaseQuestionMeta(question.id, question.title, question.type, openAnswers.length, completedResponses, "none"),
+            questionId: question.id,
+            title: question.title,
+            type: question.type,
+            openText: { answers: openAnswers, keywords: [] },
+            groupedOpenText,
+            diagnostics: buildDiagnostics(answers, completedResponses),
+          });
       }
     }
 

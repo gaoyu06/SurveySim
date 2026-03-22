@@ -14,7 +14,7 @@ import {
   type ParticipantTemplateAiGenerateResult,
   type ParticipantTemplateAiGenerateStreamEvent,
   type ParticipantTemplateDto,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 import { apiClient } from "@/api/client";
 import { RuleBuilderV2 } from "@/components/forms/RuleBuilderV2";
 import { PageHeader, Panel } from "@/components/PageHeader";

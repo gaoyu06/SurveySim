@@ -9,7 +9,7 @@ import {
   type AuthResponse,
   type LoginInput,
   type RegisterInput,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 import { ApiError, apiClient } from "@/api/client";
 import { useI18n } from "@/i18n/I18nProvider";
 import { authStore } from "@/stores/auth.store";

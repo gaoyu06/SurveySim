@@ -1,4 +1,4 @@
-import { surveyImportJsonlRecordSchema } from "@formagents/shared";
+import { surveyImportJsonlRecordSchema } from "@surveysim/shared";
 import { buildJsonFixerPrompt, renderSchemaGuide } from "./prompt-support/schema-text.js";
 import { renderPromptSections } from "./prompt-support/prompt-sections.js";
 
@@ -12,7 +12,7 @@ export function buildSurveyRepairJsonlRecordTask(input: {
       {
         role: "system" as const,
         content: [
-          "You repair one invalid questionnaire JSONL record for FormAgents.",
+          "You repair one invalid questionnaire JSONL record for SurveySim.",
           "Return exactly one corrected JSON object only.",
           "The corrected object must use the exact schema field names with no alias keys.",
           "Do not explain the fix. Do not wrap in markdown.",

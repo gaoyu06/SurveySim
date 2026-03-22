@@ -1,15 +1,15 @@
 {
-  "name": "formagents",
+  "name": "surveysim",
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@10.28.0",
   "scripts": {
-    "dev": "pnpm --parallel --filter @formagents/shared --filter @formagents/backend --filter @formagents/frontend dev",
-    "build": "pnpm --filter @formagents/shared build && pnpm --filter @formagents/backend build && pnpm --filter @formagents/frontend build",
+    "dev": "pnpm --parallel --filter @surveysim/shared --filter @surveysim/backend --filter @surveysim/frontend dev",
+    "build": "pnpm --filter @surveysim/shared build && pnpm --filter @surveysim/backend build && pnpm --filter @surveysim/frontend build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "db:generate": "pnpm --filter @formagents/backend prisma:generate",
-    "db:push": "pnpm --filter @formagents/backend prisma:push",
-    "db:studio": "pnpm --filter @formagents/backend prisma:studio"
+    "db:generate": "pnpm --filter @surveysim/backend prisma:generate",
+    "db:push": "pnpm --filter @surveysim/backend prisma:push",
+    "db:studio": "pnpm --filter @surveysim/backend prisma:studio"
   }
 }

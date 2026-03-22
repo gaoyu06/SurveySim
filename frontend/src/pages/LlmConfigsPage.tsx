@@ -8,7 +8,7 @@ import {
   llmProviderConfigInputSchema,
   type LlmProviderConfigDto,
   type LlmProviderConfigInput,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 import { ApiError, apiClient } from "@/api/client";
 import { useI18n } from "@/i18n/I18nProvider";
 import { PageHeader, Panel } from "@/components/PageHeader";

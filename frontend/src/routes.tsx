@@ -1,15 +1,18 @@
 import { App, Result, Spin } from "antd";
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import type { UserDto } from "@formagents/shared";
+import type { UserDto } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
 import { AppShell } from "@/components/layout/AppShell";
 import { authStore } from "@/stores/auth.store";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { LlmConfigsPage } from "@/pages/LlmConfigsPage";
-import { ParticipantTemplatesPage } from "@/pages/ParticipantTemplatesPage";
-import { SurveysPage } from "@/pages/SurveysPage";
+import { ParticipantTemplatesPageV2 } from "@/pages/ParticipantTemplatesPageV2";
+import { SurveysListPage } from "@/pages/SurveysListPage";
+import { SurveysImportPage } from "@/pages/SurveysImportPage";
+import { SurveyImportStreamPage } from "@/pages/SurveyImportStreamPage";
+import { SurveyPreviewPage } from "@/pages/SurveyPreviewPage";
 import { MockRunsPage } from "@/pages/MockRunsPage";
 import { MockRunDetailPage } from "@/pages/MockRunDetailPage";
 import { ReportsPage } from "@/pages/ReportsPage";
@@ -60,8 +63,11 @@ export function AppRoutes() {
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<DashboardPage />} />
         <Route path="llm-configs" element={<LlmConfigsPage />} />
-        <Route path="templates" element={<ParticipantTemplatesPage />} />
-        <Route path="surveys" element={<SurveysPage />} />
+        <Route path="templates" element={<ParticipantTemplatesPageV2 />} />
+        <Route path="surveys" element={<SurveysListPage />} />
+        <Route path="surveys/import" element={<SurveysImportPage />} />
+        <Route path="surveys/import/stream" element={<SurveyImportStreamPage />} />
+        <Route path="surveys/:id/preview" element={<SurveyPreviewPage />} />
         <Route path="mock-runs" element={<MockRunsPage />} />
         <Route path="mock-runs/:id" element={<MockRunDetailPage />} />
         <Route path="reports" element={<ReportsPage />} />

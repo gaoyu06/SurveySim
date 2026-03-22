@@ -92,7 +92,25 @@ export const participantIdentitySchema = z
     interests: z.array(z.string()).default([]),
     maritalStatus: z.string().optional(),
     customTags: z.array(z.string()).default([]),
-    noise: z.record(z.string(), z.unknown()).default({}),
+    noise: z
+      .object({
+        languageStyle: z.string().optional(),
+        decisiveness: z.number().min(0).max(1).optional(),
+        lifeMoment: z.string().optional(),
+        extremityBias: z.number().min(0).max(1).optional(),
+        centralTendency: z.number().min(0).max(1).optional(),
+        acquiescence: z.number().min(0).max(1).optional(),
+        fatigue: z.number().min(0).max(1).optional(),
+        attention: z.number().min(0).max(1).optional(),
+        topicFamiliarity: z.number().min(0).max(1).optional(),
+        socialDesirability: z.number().min(0).max(1).optional(),
+        straightlining: z.number().min(0).max(1).optional(),
+        noveltySeeking: z.number().min(0).max(1).optional(),
+        skipOptionalRate: z.number().min(0).max(1).optional(),
+        openTextVerbosity: z.number().min(0).max(1).optional(),
+      })
+      .catchall(z.unknown())
+      .default({}),
     extra: z.record(z.string(), z.unknown()).default({}),
   })
   .passthrough();

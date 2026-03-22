@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { loginInputSchema, registerInputSchema, type AuthResponse } from "@formagents/shared";
+import { loginInputSchema, registerInputSchema, type AuthResponse } from "@surveysim/shared";
 import { userRepository } from "../repositories/user.repository.js";
 import { hashPassword, verifyPassword } from "../utils/crypto.js";
 import { toIsoString } from "../utils/serialize.js";

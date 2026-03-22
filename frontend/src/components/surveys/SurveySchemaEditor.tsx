@@ -1,6 +1,6 @@
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, InputNumber, Select, Space, Switch, Table, Tag, Typography } from "antd";
-import type { SurveyQuestionDto, SurveySchemaDto } from "@formagents/shared";
+import type { SurveyQuestionDto, SurveySchemaDto } from "@surveysim/shared";
 import { useI18n } from "@/i18n/I18nProvider";
 
 const questionTypeOptions = [

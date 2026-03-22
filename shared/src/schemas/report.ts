@@ -34,6 +34,12 @@ export const groupedOpenTextMetricSchema = z.object({
   sampleAnswers: z.array(z.string()).default([]),
 });
 
+export const questionDiagnosticsSchema = z.object({
+  skippedCount: z.number().int().default(0),
+  skippedRate: z.number().default(0),
+  meanConfidence: z.number().default(0),
+});
+
 export const matrixChoiceMetricSchema = z.object({
   columnId: z.string(),
   label: z.string(),
@@ -60,6 +66,9 @@ export const questionReportSchema = z.object({
   questionId: z.string(),
   title: z.string(),
   type: z.string(),
+  responseCount: z.number().int().default(0),
+  responseRate: z.number().default(0),
+  suggestedChart: z.enum(["bar", "pie", "line", "stacked_bar", "table", "none"]).default("none"),
   singleChoice: z.array(z.object({ label: z.string(), count: z.number().int(), percentage: z.number() })).optional(),
   multiChoice: z.array(z.object({ label: z.string(), count: z.number().int(), percentage: z.number() })).optional(),
   rating: z
@@ -80,6 +89,7 @@ export const questionReportSchema = z.object({
   groupedMultiChoice: z.record(z.string(), z.array(groupedChoiceMetricSchema)).optional(),
   groupedRating: z.array(groupedRatingMetricSchema).optional(),
   groupedOpenText: z.array(groupedOpenTextMetricSchema).optional(),
+  diagnostics: questionDiagnosticsSchema.optional(),
 });
 
 const reportGroupSchema = z.object({

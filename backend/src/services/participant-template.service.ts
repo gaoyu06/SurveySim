@@ -11,7 +11,7 @@ import {
   type ParticipantTemplateAiGenerateStreamEvent,
   type ParticipantRuleInput,
   type ParticipantTemplateDto,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 import { fromJson } from "../lib/json.js";
 import { participantTemplateRepository } from "../repositories/participant-template.repository.js";
 import { RuleEngineService } from "./rule-engine.service.js";

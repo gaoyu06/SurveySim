@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { resolveParticipantAttributeDefinition } from "@formagents/shared";
+import { resolveParticipantAttributeDefinition } from "@surveysim/shared";
 import type {
   ConditionExpression,
   ParticipantIdentity,
   ParticipantRuleInput,
   ParticipantTemplateDto,
   TemplatePreview,
-} from "@formagents/shared";
+} from "@surveysim/shared";
 
 interface GeneratedIdentity extends ParticipantIdentity {
   _meta?: {
@@ -21,10 +21,22 @@ function normalizeArray(value: string | string[]) {
 function randomNoise() {
   const languageStyles = ["concise", "chatty", "hesitant", "direct", "detail-oriented"];
   const lifeMoments = ["recently changed jobs", "commutes long distance", "shops online at night", "often discusses products with friends", "usually answers surveys on mobile"];
+  const bounded = (min: number, max: number) => Number((min + Math.random() * (max - min)).toFixed(2));
   return {
     languageStyle: languageStyles[Math.floor(Math.random() * languageStyles.length)],
-    decisiveness: Number((0.35 + Math.random() * 0.6).toFixed(2)),
+    decisiveness: bounded(0.25, 0.9),
     lifeMoment: lifeMoments[Math.floor(Math.random() * lifeMoments.length)],
+    extremityBias: bounded(0.1, 0.85),
+    centralTendency: bounded(0.1, 0.85),
+    acquiescence: bounded(0.15, 0.8),
+    fatigue: bounded(0.05, 0.75),
+    attention: bounded(0.35, 0.95),
+    topicFamiliarity: bounded(0.1, 0.9),
+    socialDesirability: bounded(0.1, 0.8),
+    straightlining: bounded(0.05, 0.65),
+    noveltySeeking: bounded(0.1, 0.85),
+    skipOptionalRate: bounded(0.02, 0.3),
+    openTextVerbosity: bounded(0.15, 0.85),
   };
 }
 

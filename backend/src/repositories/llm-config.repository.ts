@@ -1,5 +1,5 @@
 import { prisma } from "../lib/db.js";
-import type { LlmProviderConfigInput } from "@formagents/shared";
+import type { LlmProviderConfigInput } from "@surveysim/shared";
 
 export const llmConfigRepository = {
   list(userId: string) {

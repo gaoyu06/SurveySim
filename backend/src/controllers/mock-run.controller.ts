@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import type { MockRunStartInput } from "@surveysim/shared";
 import { MockEngineService } from "../services/mock-engine/mock-engine.service.js";
 
 export function mockRunControllerFactory(service: MockEngineService) {
@@ -20,9 +21,9 @@ export function mockRunControllerFactory(service: MockEngineService) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }
     },
-    start: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    start: async (request: FastifyRequest<{ Params: { id: string }; Body: MockRunStartInput }>, reply: FastifyReply) => {
       try {
-        reply.send(await service.start(request.authUser!.id, request.params.id));
+        reply.send(await service.start(request.authUser!.id, request.params.id, request.body));
       } catch (error) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }
@@ -34,9 +35,23 @@ export function mockRunControllerFactory(service: MockEngineService) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }
     },
+    delete: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      try {
+        reply.send(await service.delete(request.authUser!.id, request.params.id));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
+    },
     retry: async (request: FastifyRequest<{ Params: { id: string }; Body: { participantIds?: string[] } }>, reply: FastifyReply) => {
       try {
         reply.send(await service.retryParticipants(request.authUser!.id, request.params.id, request.body.participantIds ?? []));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    appendParticipants: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      try {
+        reply.send(await service.appendParticipants(request.authUser!.id, request.params.id, request.body));
       } catch (error) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }

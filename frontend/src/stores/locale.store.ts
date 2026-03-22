@@ -14,6 +14,6 @@ export const localeStore = create<LocaleState>()(
       locale: "zh-CN",
       setLocale: (locale) => set({ locale }),
     }),
-    { name: "formagents-locale" },
+    { name: "surveysim-locale" },
   ),
 );
