@@ -19,6 +19,44 @@ It combines survey structuring, participant modeling, simulation runs, and repor
 - Run monitoring, retry flow, reporting, and export tools
 - Full-stack TypeScript monorepo with shared schemas
 
+## Screenshots
+
+### LLM configuration workspace
+
+Configure OpenAI-compatible providers, set defaults, and tune request limits in one place.
+
+![LLM configuration workspace](docs/screenshots/llm-configs.png)
+
+### Participant template builder
+
+Define target audience dimensions, draft AI-assisted rules, and refine weighted distributions in the visual editor.
+
+![Participant template builder](docs/screenshots/templates.png)
+
+### Survey import flow
+
+Paste raw questionnaire text, choose an extraction model, and prepare a structured survey import from a single intake screen.
+
+![Survey import flow](docs/screenshots/survey-import.png)
+
+### Live mock run execution
+
+Track participant generation progress, inspect execution logs, and review identity-level state while a simulation batch is running.
+
+![Live mock run execution](docs/screenshots/mock-run-detail.png)
+
+### Result analysis and exports
+
+Review response distributions, open-text samples, matrix summaries, and export-ready analytics from a completed run.
+
+![Result analysis and exports](docs/screenshots/reports.png)
+
+### Printable report output
+
+Generate a clean printable summary page for completed runs, including top-level metrics and question-by-question result snapshots.
+
+![Printable report output](docs/screenshots/printable-report.png)
+
 ## Tech Stack
 
 - Frontend: React, Vite, TypeScript, Ant Design
