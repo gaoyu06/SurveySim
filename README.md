@@ -196,4 +196,6 @@ If you plan to make a larger change, open an issue first so the direction can be
 
 ## License
 
-Add a license file before publishing the repository publicly.
+This project is licensed under the GNU General Public License v3.0.
+
+See the [LICENSE](/e:/Code/Projects/FormAgents/LICENSE) file for the full text.
