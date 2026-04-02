@@ -15,9 +15,12 @@ import {
 } from "@surveysim/shared";
 import { prisma } from "../../lib/db.js";
 import { fromJson, toJson } from "../../lib/json.js";
+import type { AuthUserContext } from "../../types/auth.js";
+import { isAdmin, resolveDataScope } from "../../utils/access.js";
 import { LlmService } from "../llm/llm.service.js";
 import { ParticipantTemplateService } from "../participant-template.service.js";
 import { ReportService } from "../reporting/report.service.js";
+import { UsageLimitService } from "../usage-limit.service.js";
 import {
   buildPersonaGenerateTask,
   buildSurveyRepairAnswerRecordTask,
@@ -46,6 +49,8 @@ function emptyProgress(total: number) {
 
 function mapRun(run: {
   id: string;
+  userId: string;
+  user?: { email: string } | null;
   name: string;
   participantTemplateId: string;
   surveyId: string;
@@ -67,7 +72,11 @@ function mapRun(run: {
   return {
     id: run.id,
     name: run.name,
+    ownerId: run.userId,
+    ownerEmail: run.user?.email,
+    isOwnedByCurrentUser: false,
     participantTemplateId: run.participantTemplateId,
+    contentTaskId: run.surveyId,
     surveyId: run.surveyId,
     llmConfigId: run.llmConfigId,
     participantCount: run.participantCount,
@@ -851,26 +860,30 @@ export class MockEngineService {
   private readonly llmService = new LlmService();
   private readonly templateService = new ParticipantTemplateService();
   private readonly reportService = new ReportService();
+  private readonly usageLimitService = new UsageLimitService();
   private readonly activeRuns = new Map<string, RunContext>();
 
-  async list(userId: string) {
-    const runs = await prisma.mockRun.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
+  async list(user: AuthUserContext, scope?: unknown) {
+    const dataScope = resolveDataScope(user, scope);
+    const where = dataScope === "all" ? {} : { userId: user.id };
+    const runs = await prisma.mockRun.findMany({ where, include: { user: true }, orderBy: { createdAt: "desc" } });
     await Promise.all(
       runs
         .filter((run) => run.status === RunStatus.CANCELING && !this.activeRuns.has(run.id))
         .map((run) => this.reconcileOrphanedCancelingRun(run.id)),
     );
 
-    const refreshedRuns = await prisma.mockRun.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
-    return refreshedRuns.map(mapRun);
+    const refreshedRuns = await prisma.mockRun.findMany({ where, include: { user: true }, orderBy: { createdAt: "desc" } });
+    return refreshedRuns.map((run) => ({ ...mapRun(run), isOwnedByCurrentUser: run.userId === user.id }));
   }
 
-  async get(userId: string, runId: string) {
+  async get(user: AuthUserContext, runId: string) {
     await this.reconcileOrphanedCancelingRun(runId);
 
     const run = await prisma.mockRun.findFirst({
-      where: { id: runId, userId },
+      where: isAdmin(user) ? { id: runId } : { id: runId, userId: user.id },
       include: {
+        user: true,
         participantTemplate: {
           select: {
             dimensions: true,
@@ -890,6 +903,7 @@ export class MockEngineService {
 
     return {
       ...mapRun(run),
+      isOwnedByCurrentUser: run.userId === user.id,
       templateAttributes: normalizeParticipantAttributeDefinitions(
         fromJson<Array<string | Partial<ParticipantAttributeDefinitionDto>>>(run.participantTemplate.dimensions),
       ),
@@ -920,11 +934,11 @@ export class MockEngineService {
     const [template, survey, llmConfig] = await Promise.all([
       prisma.participantTemplate.findFirst({ where: { id: payload.participantTemplateId, userId }, include: { rules: true } }),
       prisma.survey.findFirst({ where: { id: payload.surveyId, userId } }),
-      prisma.llmProviderConfig.findFirst({ where: { id: payload.llmConfigId, userId } }),
+      prisma.llmProviderConfig.findFirst({ where: { id: payload.llmConfigId, OR: [{ userId }, { isPublic: true }] } }),
     ]);
 
     if (!template) throw new Error("Participant template not found");
-    if (!survey) throw new Error("Survey not found");
+    if (!survey) throw new Error("Content task not found");
     if (!llmConfig) throw new Error("LLM config not found");
 
     const run = await prisma.mockRun.create({
@@ -936,14 +950,15 @@ export class MockEngineService {
       },
     });
 
-    return mapRun(run);
+    return { ...mapRun(run), isOwnedByCurrentUser: true };
   }
 
-  async start(userId: string, runId: string, input: unknown) {
+  async start(user: AuthUserContext, runId: string, input: unknown) {
+    await this.usageLimitService.consumeOrThrow(user, "mock run start");
     await this.reconcileOrphanedCancelingRun(runId);
 
     const payload = mockRunStartInputSchema.parse(input ?? {});
-    const run = await prisma.mockRun.findFirst({ where: { id: runId, userId } });
+    const run = await prisma.mockRun.findFirst({ where: { id: runId, userId: user.id } });
     if (!run) throw new Error("Mock run not found");
     if (run.status === RunStatus.RUNNING || run.status === RunStatus.QUEUED) return mapRun(run);
 
@@ -954,10 +969,10 @@ export class MockEngineService {
 
     const context = { cancelRequested: false, abortController: new AbortController() };
     this.activeRuns.set(runId, context);
-    void this.executeRun(userId, runId, context, undefined, payload.mode);
+    void this.executeRun(user.id, runId, context, undefined, payload.mode);
 
     const refreshed = await prisma.mockRun.findUniqueOrThrow({ where: { id: runId } });
-    return mapRun(refreshed);
+    return { ...mapRun(refreshed), isOwnedByCurrentUser: true };
   }
 
   async cancel(userId: string, runId: string) {
@@ -998,6 +1013,7 @@ export class MockEngineService {
   }
 
   async retryParticipants(userId: string, runId: string, participantIds: string[]) {
+    await this.usageLimitService.consumeOrThrow({ id: userId, email: "", role: "user" }, "mock run retry");
     const run = await prisma.mockRun.findFirst({ where: { id: runId, userId } });
     if (!run) throw new Error("Mock run not found");
     if (this.activeRuns.has(runId)) throw new Error("Run is currently active");
@@ -1038,6 +1054,7 @@ export class MockEngineService {
   }
 
   async appendParticipants(userId: string, runId: string, input: unknown) {
+    await this.usageLimitService.consumeOrThrow({ id: userId, email: "", role: "user" }, "mock run append participants");
     await this.reconcileOrphanedCancelingRun(runId);
 
     const payload = mockRunAppendInputSchema.parse(input);
@@ -1311,7 +1328,7 @@ export class MockEngineService {
       await this.log(runId, "system", `Run finished with status ${status}`, status === RunStatus.COMPLETED ? "INFO" : "WARN");
 
       if (status === RunStatus.COMPLETED) {
-        await this.reportService.getReport(userId, runId, {});
+        await this.reportService.getReport({ id: userId, email: "", role: "user" }, runId, {});
       }
     } catch (error) {
       if (context.cancelRequested || isCanceledError(error)) {
@@ -1354,7 +1371,7 @@ export class MockEngineService {
     try {
       const task = buildPersonaGenerateTask({
         identity,
-        surveyTitle: surveySchema.survey.title,
+        contentTaskTitle: surveySchema.survey.title,
         extraRespondentPrompt,
       });
       const result = await this.llmService.generateJson<{ personaPrompt: string; traits: string[]; guardrails: string[] }>(
@@ -1463,7 +1480,7 @@ export class MockEngineService {
 
     const answerSingleQuestion = async (questionId: string, reason: string) => {
       const singleTask = buildSurveyResponseSingleAnswerTask({
-        survey: surveySchema,
+        contentTask: surveySchema,
         identity,
         personaPrompt,
         questionId,
@@ -1486,7 +1503,7 @@ export class MockEngineService {
 
     try {
       const task = buildSurveyResponseJsonlTask({
-        survey: surveySchema,
+        contentTask: surveySchema,
         identity,
         personaPrompt,
         respondentInstructions: surveySchema.survey.respondentInstructions,

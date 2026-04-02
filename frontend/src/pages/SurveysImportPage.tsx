@@ -4,6 +4,7 @@ import { App, Button, Form, Input, Select, Space, Typography, Upload } from "ant
 import type { LlmProviderConfigDto } from "@surveysim/shared";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/api/client";
+import { FieldLabel, HelpCallout } from "@/components/Help";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { useI18n } from "@/i18n/I18nProvider";
 import { surveyImportStore } from "@/stores/survey-import.store";
@@ -32,7 +33,7 @@ export function SurveysImportPage() {
   });
 
   const startImport = async (body: BodyInit) => {
-    navigate("/surveys/import/stream");
+    navigate("/content-tasks/import/stream");
     void startStreamImport(body).catch((error) => {
       message.error(error instanceof Error ? error.message : String(error));
     });
@@ -43,21 +44,30 @@ export function SurveysImportPage() {
       <PageHeader
         title={t("surveys.importPageTitle")}
         subtitle={t("surveys.importPageSubtitle")}
-        actions={<Button onClick={() => navigate("/surveys")}>{t("common.back")}</Button>}
+        actions={<Button onClick={() => navigate("/content-tasks")}>{t("common.back")}</Button>}
+      />
+      <HelpCallout
+        title={t("surveys.importGuideTitle")}
+        description={t("surveys.importGuideDescription")}
+        items={[
+          t("surveys.importGuideStep1"),
+          t("surveys.importGuideStep2"),
+          t("surveys.importGuideStep3"),
+        ]}
       />
       <Panel>
         <Typography.Title level={4}>{t("surveys.importRaw")}</Typography.Title>
         <Form layout="vertical">
-          <Form.Item label={t("surveys.extractionConfig")}>
+          <Form.Item label={<FieldLabel label={t("surveys.extractionConfig")} hint={t("surveys.extractionConfigHint")} />}>
             <Select
               allowClear
               placeholder={t("surveys.chooseConfig")}
-              options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
+              options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.isOwnedByCurrentUser ? item.name : `${item.name} · ${item.ownerEmail}`, value: item.id }))}
               value={selectedLlmConfigId}
               onChange={(value) => setSelectedLlmConfigId(value)}
             />
           </Form.Item>
-          <Form.Item label={t("surveys.pasteText")}>
+          <Form.Item label={<FieldLabel label={t("surveys.pasteText")} hint={t("surveys.pasteTextHint")} />}>
             <Input.TextArea
               rows={18}
               placeholder={t("surveys.pastePlaceholder")}
@@ -65,9 +75,9 @@ export function SurveysImportPage() {
               onChange={(event) => setImportText(event.target.value)}
             />
           </Form.Item>
-          <Form.Item label={t("surveys.uploadFile")}>
+          <Form.Item label={<FieldLabel label={t("surveys.uploadFile")} hint={t("surveys.uploadFileHint")} />}>
             <Upload.Dragger
-              accept=".txt,.md,.csv,.json"
+              accept=".txt,.md,.csv,.json,.doc,.docx"
               showUploadList={false}
               beforeUpload={(file) => {
                 const formData = new FormData();
@@ -94,7 +104,7 @@ export function SurveysImportPage() {
             >
               {t("surveys.extract")}
             </Button>
-            <Button onClick={() => navigate("/surveys/import/stream")}>{t("surveys.extractionStream")}</Button>
+            <Button onClick={() => navigate("/content-tasks/import/stream")}>{t("surveys.extractionStream")}</Button>
           </Space>
         </Form>
       </Panel>

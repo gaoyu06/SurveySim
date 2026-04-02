@@ -108,6 +108,7 @@ export function MockRunDetailPage() {
   }, [runQuery.data?.progress]);
 
   const isActive = ["queued", "running", "canceling"].includes(runQuery.data?.status ?? "");
+  const isReadonlyRun = runQuery.data?.isOwnedByCurrentUser === false;
   const controlAction = runQuery.data?.status === "canceling" ? "cancel" : isActive ? "cancel" : "start";
 
   const participants = useMemo<ParticipantRow[]>(() => runQuery.data?.participants ?? [], [runQuery.data?.participants]);
@@ -279,7 +280,7 @@ export function MockRunDetailPage() {
     <>
       <PageHeader
         title={runQuery.data?.name ?? t("mockRunDetail.titleFallback")}
-        subtitle={t("mockRunDetail.subtitle")}
+        subtitle={`${t("mockRunDetail.subtitle")}${runQuery.data?.ownerEmail ? ` · ${t("common.owner")}: ${runQuery.data.ownerEmail}` : ""}`}
         actions={
           <Space>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/mock-runs")}>
@@ -290,7 +291,7 @@ export function MockRunDetailPage() {
               danger={controlAction === "cancel"}
               icon={controlAction === "start" ? <PlayCircleOutlined /> : <StopOutlined />}
               loading={runQuery.data?.status === "canceling" || controlMutation.isPending}
-              disabled={runQuery.data?.status === "canceling"}
+              disabled={runQuery.data?.status === "canceling" || isReadonlyRun}
               onClick={handleControl}
             >
               {runQuery.data?.status === "canceling" ? t("status.canceling") : controlAction === "start" ? t("mockRuns.start") : t("mockRuns.cancel")}
@@ -300,7 +301,7 @@ export function MockRunDetailPage() {
             </Button>
             <Button
               icon={<PlusOutlined />}
-              disabled={isActive}
+              disabled={isActive || isReadonlyRun}
               onClick={() => setAppendModalOpen(true)}
             >
               {t("mockRuns.appendParticipants")}
@@ -308,7 +309,7 @@ export function MockRunDetailPage() {
             <Button
               icon={<ReloadOutlined />}
               loading={retryMutation.isPending}
-              disabled={selectedParticipantIds.length === 0}
+              disabled={selectedParticipantIds.length === 0 || isReadonlyRun}
               onClick={() => retryMutation.mutate()}
             >
               {t("mockRunDetail.retrySelected")}
@@ -317,6 +318,7 @@ export function MockRunDetailPage() {
               danger
               icon={<DeleteOutlined />}
               loading={deleteMutation.isPending}
+              disabled={isReadonlyRun}
               onClick={confirmDelete}
             >
               {t("mockRuns.delete")}

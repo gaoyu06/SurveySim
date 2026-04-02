@@ -65,15 +65,34 @@ export const participantAttributeDefinitionSchema = z.object({
   builtin: z.boolean().optional(),
 });
 
+export const participantArchetypeProfileSchema = z.object({
+  label: z.string().min(1).max(120),
+  description: z.string().max(1000).optional(),
+  scenarioContext: z.string().max(240).optional(),
+  seedTags: z.array(z.string().min(1).max(80)).default([]),
+  seedPrompt: z.string().max(2000).optional(),
+});
+
+export const participantRandomConfigSchema = z.object({
+  seed: z.string().min(1).max(120).optional(),
+  randomnessLevel: z.enum(["low", "medium", "high"]).default("medium"),
+  noiseProfile: z.enum(["conservative", "balanced", "expressive"]).default("balanced"),
+});
+
 export const participantTemplateInputSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(1000).optional(),
+  archetypeProfile: participantArchetypeProfileSchema.optional(),
   attributes: z.array(participantAttributeDefinitionSchema).default(getBuiltinParticipantAttributes()),
+  randomConfig: participantRandomConfigSchema.default({ randomnessLevel: "medium", noiseProfile: "balanced" }),
   sampleSizePreview: z.number().int().min(10).max(5000).default(200),
 });
 
 export const participantTemplateSchema = participantTemplateInputSchema.extend({
   id: z.string(),
+  ownerId: z.string().optional(),
+  ownerEmail: z.string().email().optional(),
+  isOwnedByCurrentUser: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   rules: z.array(participantRuleSchema),
@@ -123,7 +142,9 @@ export const templatePreviewSchema = z.object({
 
 export const participantTemplateAiGenerateInputSchema = z.object({
   prompt: z.string().min(1),
+  archetypeProfile: participantArchetypeProfileSchema.optional(),
   attributes: z.array(participantAttributeDefinitionSchema).default([]),
+  randomConfig: participantRandomConfigSchema.default({ randomnessLevel: "medium", noiseProfile: "balanced" }),
   llmConfigId: z.string().optional(),
   templateName: z.string().optional(),
   templateDescription: z.string().optional(),
@@ -133,7 +154,9 @@ export const participantTemplateAiGenerateResultSchema = z.object({
   template: participantTemplateInputSchema.pick({
     name: true,
     description: true,
+    archetypeProfile: true,
     attributes: true,
+    randomConfig: true,
     sampleSizePreview: true,
   }),
   rules: z.array(participantRuleInputSchema),
@@ -145,7 +168,9 @@ export const participantTemplateAiGenerateJsonlRecordSchema = z.discriminatedUni
     recordType: z.literal("template"),
     name: z.string().min(1).max(120),
     description: z.string().max(1000).optional(),
+    archetypeProfile: participantArchetypeProfileSchema.optional(),
     attributes: z.array(participantAttributeDefinitionSchema).default([]),
+    randomConfig: participantRandomConfigSchema.default({ randomnessLevel: "medium", noiseProfile: "balanced" }),
     sampleSizePreview: z.number().int().min(10).max(5000).default(300),
   }),
   z.object({
@@ -199,6 +224,8 @@ export type ParticipantTemplateDto = z.infer<typeof participantTemplateSchema>;
 export type TemplatePreview = z.infer<typeof templatePreviewSchema>;
 export type ParticipantAttributePresetValueDto = z.infer<typeof participantAttributePresetValueSchema>;
 export type ParticipantAttributeDefinitionDto = z.infer<typeof participantAttributeDefinitionSchema>;
+export type ParticipantArchetypeProfileDto = z.infer<typeof participantArchetypeProfileSchema>;
+export type ParticipantRandomConfigDto = z.infer<typeof participantRandomConfigSchema>;
 export type ParticipantTemplateAiGenerateInput = z.infer<typeof participantTemplateAiGenerateInputSchema>;
 export type ParticipantTemplateAiGenerateResult = z.infer<typeof participantTemplateAiGenerateResultSchema>;
 export type ParticipantTemplateAiGenerateJsonlRecord = z.infer<typeof participantTemplateAiGenerateJsonlRecordSchema>;

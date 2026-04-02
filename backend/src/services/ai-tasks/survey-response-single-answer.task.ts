@@ -39,7 +39,7 @@ function buildBehaviorAnchors(identity: Record<string, unknown>) {
 }
 
 export function buildSurveyResponseSingleAnswerTask(input: {
-  survey: unknown;
+  contentTask: unknown;
   identity: unknown;
   personaPrompt: string;
   questionId: string;
@@ -48,19 +48,19 @@ export function buildSurveyResponseSingleAnswerTask(input: {
   extraRespondentPrompt?: string;
 }) {
   const payload = responseGenerationPayloadSchema.parse({
-    survey: input.survey,
+    contentTask: input.contentTask,
     identity: input.identity,
     personaPrompt: input.personaPrompt,
     extraSystemPrompt: input.extraSystemPrompt,
     extraRespondentPrompt: input.extraRespondentPrompt,
   });
 
-  const question = payload.survey.sections
+  const question = payload.contentTask.sections
     .flatMap((section) => section.questions)
     .find((item) => item.id === input.questionId);
 
   if (!question) {
-    throw new Error(`Question ${input.questionId} not found in survey payload`);
+    throw new Error(`Question ${input.questionId} not found in content-task payload`);
   }
 
   const behaviorAnchors = buildBehaviorAnchors(payload.identity as Record<string, unknown>);
@@ -70,7 +70,7 @@ export function buildSurveyResponseSingleAnswerTask(input: {
       {
         role: "system" as const,
         content: [
-          "You simulate one survey respondent for SurveySim.",
+          "You simulate one participant completing a content task for SurveySim.",
           "Return exactly one StructuredAnswer JSON object only.",
           "No markdown. No prose. No wrapper object. No arrays.",
           "Use the exact questionId and valid option ids for the target question.",
@@ -85,7 +85,7 @@ export function buildSurveyResponseSingleAnswerTask(input: {
           {
             title: "Task",
             lines: [
-              "Answer exactly one survey question as the provided respondent persona.",
+              "Answer exactly one content-task question as the provided participant persona.",
               `Return one StructuredAnswer object for questionId=${input.questionId}.`,
               "Answer as a subjective respondent, not as an assistant trying to pick the objectively correct or most professional option.",
               "If the target question is optional and the respondent would realistically skip it, you may set isSkipped=true with a skipReason instead of forcing an answer.",
@@ -108,7 +108,7 @@ export function buildSurveyResponseSingleAnswerTask(input: {
               "confidence should be a number between 0 and 1.",
               "If the question is about wording, translation, interpretation, naming, or acceptability, choose what this respondent would personally find clearer, more natural, or more appealing, not what is objectively most correct.",
               "When multiple answers are plausible, let the persona's taste and mild inconsistency drive the choice.",
-              input.respondentInstructions ? `Survey-wide respondent instructions: ${input.respondentInstructions}` : undefined,
+              input.respondentInstructions ? `Task-wide participant instructions: ${input.respondentInstructions}` : undefined,
             ],
           },
           {

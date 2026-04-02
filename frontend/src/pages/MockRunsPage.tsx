@@ -6,8 +6,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Controller, useForm } from "react-hook-form";
 import {
-  mockRunStartModeSchema,
   mockRunCreateInputSchema,
+  mockRunStartModeSchema,
   type LlmProviderConfigDto,
   type MockRunCreateInput,
   type MockRunDto,
@@ -15,14 +15,17 @@ import {
   type ParticipantTemplateDto,
 } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
+import { FieldLabel, HelpCallout } from "@/components/Help";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { useI18n } from "@/i18n/I18nProvider";
+import { authStore } from "@/stores/auth.store";
 
-type SurveyRecord = { id: string; title: string };
+type ContentTaskRecord = { id: string; title: string };
 
 const defaultValues: MockRunCreateInput = {
   name: "Batch 01",
   participantTemplateId: "",
+  contentTaskId: "",
   surveyId: "",
   llmConfigId: "",
   participantCount: 24,
@@ -38,35 +41,41 @@ export function MockRunsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t } = useI18n();
+  const currentUser = authStore((state) => state.user);
   const [isCreateDrawerOpen, setIsCreateDrawerOpen] = useState(false);
   const [startChoiceRun, setStartChoiceRun] = useState<MockRunDto | null>(null);
+  const [onlyOwnData, setOnlyOwnData] = useState(true);
   const form = useForm<MockRunCreateInput>({
     resolver: zodResolver(mockRunCreateInputSchema),
     defaultValues,
   });
 
-  const [templatesQuery, surveysQuery, llmConfigsQuery, runsQuery] = [
+  const [templatesQuery, contentTasksQuery, llmConfigsQuery, runsQuery] = [
     useQuery({
       queryKey: ["templates"],
       queryFn: () => apiClient.get<ParticipantTemplateDto[]>("/participant-templates"),
     }),
     useQuery({
-      queryKey: ["surveys"],
-      queryFn: () => apiClient.get<SurveyRecord[]>("/surveys"),
+      queryKey: ["content-tasks"],
+      queryFn: () => apiClient.get<ContentTaskRecord[]>("/content-tasks"),
     }),
     useQuery({
       queryKey: ["llm-configs"],
       queryFn: () => apiClient.get<LlmProviderConfigDto[]>("/llm-configs"),
     }),
     useQuery({
-      queryKey: ["mock-runs"],
-      queryFn: () => apiClient.get<MockRunDto[]>("/mock-runs"),
+      queryKey: ["mock-runs", currentUser?.role, onlyOwnData],
+      queryFn: () => apiClient.get<MockRunDto[]>(`/mock-runs${currentUser?.role === "admin" && !onlyOwnData ? "?scope=all" : ""}`),
       refetchInterval: 4000,
     }),
   ];
 
   const createMutation = useMutation({
-    mutationFn: (values: MockRunCreateInput) => apiClient.post<MockRunDto>("/mock-runs", values),
+    mutationFn: (values: MockRunCreateInput) =>
+      apiClient.post<MockRunDto>("/mock-runs", {
+        ...values,
+        contentTaskId: values.contentTaskId || values.surveyId,
+      }),
     onSuccess: (result) => {
       message.success(t("mockRuns.runCreated"));
       form.reset(defaultValues);
@@ -109,9 +118,7 @@ export function MockRunsPage() {
       content: t("mockRuns.deleteConfirmDescription", { name: item.name }),
       okText: t("common.delete"),
       cancelText: t("common.cancel"),
-      okButtonProps: {
-        danger: true,
-      },
+      okButtonProps: { danger: true },
       icon: <ExclamationCircleOutlined />,
       onOk: async () => {
         await deleteMutation.mutateAsync(item.id);
@@ -178,10 +185,23 @@ export function MockRunsPage() {
         title={t("mockRuns.title")}
         subtitle={t("mockRuns.subtitle")}
         actions={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateDrawerOpen(true)}>
-            {t("mockRuns.newRun")}
-          </Button>
+          <Space>
+            {currentUser?.role === "admin" ? (
+              <Space>
+                <span>{t("common.onlyMine")}</span>
+                <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
+              </Space>
+            ) : null}
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateDrawerOpen(true)}>
+              {t("mockRuns.newRun")}
+            </Button>
+          </Space>
         }
+      />
+      <HelpCallout
+        title={t("mockRuns.guideTitle")}
+        description={t("mockRuns.guideDescription")}
+        items={[t("mockRuns.guideStep1"), t("mockRuns.guideStep2"), t("mockRuns.guideStep3")]}
       />
       <Panel>
         <Table
@@ -190,6 +210,7 @@ export function MockRunsPage() {
           pagination={false}
           columns={[
             { title: t("mockRuns.run"), dataIndex: "name" },
+            { title: t("common.owner"), dataIndex: "ownerEmail" },
             {
               title: t("common.status"),
               render: (_, item) => t(`status.${item.status}`),
@@ -212,13 +233,13 @@ export function MockRunsPage() {
                       danger={control.danger}
                       icon={control.icon}
                       loading={item.status === "canceling" || isMutatingCurrent}
-                      disabled={control.disabled}
+                      disabled={control.disabled || item.isOwnedByCurrentUser === false}
                       onClick={() => handleRunAction(item, control.action)}
                     >
                       {control.label}
                     </Button>
                     <Button onClick={() => navigate(`/mock-runs/${item.id}`)}>{t("mockRuns.detail")}</Button>
-                    <Button danger icon={<DeleteOutlined />} onClick={() => confirmDelete(item)}>
+                    <Button danger disabled={item.isOwnedByCurrentUser === false} icon={<DeleteOutlined />} onClick={() => confirmDelete(item)}>
                       {t("mockRuns.delete")}
                     </Button>
                   </Space>
@@ -229,167 +250,98 @@ export function MockRunsPage() {
         />
       </Panel>
 
-      <Drawer
-        title={t("mockRuns.createRunDrawerTitle")}
-        width={560}
-        open={isCreateDrawerOpen}
-        onClose={() => setIsCreateDrawerOpen(false)}
-      >
+      <Drawer title={t("mockRuns.createRunDrawerTitle")} width={560} open={isCreateDrawerOpen} onClose={() => setIsCreateDrawerOpen(false)}>
         <form onSubmit={form.handleSubmit(submit)} noValidate>
           <Form layout="vertical" component={false}>
-            <Form.Item label={t("mockRuns.runName")} validateStatus={form.formState.errors.name ? "error" : ""} help={form.formState.errors.name?.message}>
-              <Controller
-                name="name"
-                control={form.control}
-                render={({ field }) => <Input {...field} value={field.value ?? ""} />}
-              />
+            <HelpCallout
+              title={t("mockRuns.drawerGuideTitle")}
+              description={t("mockRuns.drawerGuideDescription")}
+              items={[t("mockRuns.drawerGuideStep1"), t("mockRuns.drawerGuideStep2"), t("mockRuns.drawerGuideStep3")]}
+            />
+            <Form.Item label={<FieldLabel label={t("mockRuns.runName")} hint={t("mockRuns.runNameHint")} />} validateStatus={form.formState.errors.name ? "error" : ""} help={form.formState.errors.name?.message}>
+              <Controller name="name" control={form.control} render={({ field }) => <Input {...field} value={field.value ?? ""} />} />
             </Form.Item>
-            <Form.Item label={t("mockRuns.template")} validateStatus={form.formState.errors.participantTemplateId ? "error" : ""} help={form.formState.errors.participantTemplateId?.message}>
+            <Form.Item label={<FieldLabel label={t("mockRuns.template")} hint={t("mockRuns.templateHint")} />} validateStatus={form.formState.errors.participantTemplateId ? "error" : ""} help={form.formState.errors.participantTemplateId?.message}>
               <Controller
                 name="participantTemplateId"
                 control={form.control}
                 render={({ field }) => (
-                  <Select
-                    options={(templatesQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
-                    value={field.value}
-                    onChange={field.onChange}
-                  />
+                  <Select options={(templatesQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))} value={field.value} onChange={field.onChange} />
                 )}
               />
             </Form.Item>
-            <Form.Item label={t("mockRuns.survey")} validateStatus={form.formState.errors.surveyId ? "error" : ""} help={form.formState.errors.surveyId?.message}>
+            <Form.Item label={<FieldLabel label={t("mockRuns.survey")} hint={t("mockRuns.surveyHint")} />} validateStatus={form.formState.errors.contentTaskId ? "error" : ""} help={form.formState.errors.contentTaskId?.message}>
               <Controller
-                name="surveyId"
+                name="contentTaskId"
                 control={form.control}
                 render={({ field }) => (
-                  <Select
-                    options={(surveysQuery.data ?? []).map((item) => ({ label: item.title, value: item.id }))}
-                    value={field.value}
-                    onChange={field.onChange}
-                  />
+                  <Select options={(contentTasksQuery.data ?? []).map((item) => ({ label: item.title, value: item.id }))} value={field.value} onChange={field.onChange} />
                 )}
               />
             </Form.Item>
-            <Form.Item label={t("mockRuns.llmConfig")} validateStatus={form.formState.errors.llmConfigId ? "error" : ""} help={form.formState.errors.llmConfigId?.message}>
+            <Form.Item label={<FieldLabel label={t("mockRuns.modelConfig")} hint={t("mockRuns.llmConfigHint")} />} validateStatus={form.formState.errors.llmConfigId ? "error" : ""} help={form.formState.errors.llmConfigId?.message}>
               <Controller
                 name="llmConfigId"
                 control={form.control}
                 render={({ field }) => (
-                  <Select
-                    options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
-                    value={field.value}
-                    onChange={field.onChange}
-                  />
+                  <Select options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.isOwnedByCurrentUser ? item.name : `${item.name} · ${item.ownerEmail}`, value: item.id }))} value={field.value} onChange={field.onChange} />
                 )}
               />
             </Form.Item>
-            <Space wrap>
-              <Form.Item label={t("mockRuns.participants")} validateStatus={form.formState.errors.participantCount ? "error" : ""} help={form.formState.errors.participantCount?.message}>
-                <Controller
-                  name="participantCount"
-                  control={form.control}
-                  render={({ field }) => (
-                    <InputNumber min={1} max={1000} value={field.value} onChange={(value) => field.onChange(value ?? 24)} />
-                  )}
-                />
-              </Form.Item>
-              <Form.Item label={t("mockRuns.concurrency")} validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
-                <Controller
-                  name="concurrency"
-                  control={form.control}
-                  render={({ field }) => (
-                    <InputNumber min={1} max={32} value={field.value} onChange={(value) => field.onChange(value ?? 4)} />
-                  )}
-                />
-              </Form.Item>
-              <Form.Item label={t("mockRuns.reuseIdentity")}>
-                <Controller
-                  name="reuseIdentity"
-                  control={form.control}
-                  render={({ field }) => <Switch checked={Boolean(field.value)} onChange={field.onChange} />}
-                />
-              </Form.Item>
-              <Form.Item label={t("mockRuns.reusePersona")}>
-                <Controller
-                  name="reusePersonaPrompt"
-                  control={form.control}
-                  render={({ field }) => <Switch checked={Boolean(field.value)} onChange={field.onChange} />}
-                />
-              </Form.Item>
-            </Space>
-            <Form.Item label={t("mockRuns.extraSystemPrompt")}>
-              <Controller
-                name="extraSystemPrompt"
-                control={form.control}
-                render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />}
-              />
+            <Form.Item label={<FieldLabel label={t("mockRuns.participantCount")} hint={t("mockRuns.participantCountHint")} />} validateStatus={form.formState.errors.participantCount ? "error" : ""} help={form.formState.errors.participantCount?.message}>
+              <Controller name="participantCount" control={form.control} render={({ field }) => <InputNumber min={1} max={1000} style={{ width: "100%" }} {...field} value={field.value} />} />
             </Form.Item>
-            <Form.Item label={t("mockRuns.extraRespondentPrompt")}>
-              <Controller
-                name="extraRespondentPrompt"
-                control={form.control}
-                render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />}
-              />
+            <Form.Item label={<FieldLabel label={t("mockRuns.concurrency")} hint={t("mockRuns.concurrencyHint")} />} validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
+              <Controller name="concurrency" control={form.control} render={({ field }) => <InputNumber min={1} max={64} style={{ width: "100%" }} {...field} value={field.value} />} />
             </Form.Item>
-            <Space>
-              <Button onClick={() => setIsCreateDrawerOpen(false)}>{t("common.cancel")}</Button>
-              <Button type="primary" htmlType="submit" loading={createMutation.isPending}>
-                {t("mockRuns.createRun")}
-              </Button>
-            </Space>
+            <Form.Item label={<FieldLabel label={t("mockRuns.extraSystemPrompt")} hint={t("mockRuns.extraSystemPromptHint")} />}>
+              <Controller name="extraSystemPrompt" control={form.control} render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />} />
+            </Form.Item>
+            <Form.Item label={<FieldLabel label={t("mockRuns.extraRespondentPrompt")} hint={t("mockRuns.extraRespondentPromptHint")} />}>
+              <Controller name="extraRespondentPrompt" control={form.control} render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />} />
+            </Form.Item>
+            <Form.Item>
+              <Space>
+                <Controller name="reuseIdentity" control={form.control} render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />} />
+                <FieldLabel label={t("mockRuns.reuseIdentity")} hint={t("mockRuns.reuseIdentityHint")} />
+              </Space>
+            </Form.Item>
+            <Form.Item>
+              <Space>
+                <Controller name="reusePersonaPrompt" control={form.control} render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />} />
+                <FieldLabel label={t("mockRuns.reusePersonaPrompt")} hint={t("mockRuns.reusePersonaHint")} />
+              </Space>
+            </Form.Item>
+            <Button type="primary" htmlType="submit" loading={createMutation.isPending}>
+              {t("mockRuns.createRun")}
+            </Button>
           </Form>
         </form>
       </Drawer>
+
       <Modal
         open={Boolean(startChoiceRun)}
         title={t("mockRuns.startModeTitle")}
-        footer={null}
         onCancel={() => setStartChoiceRun(null)}
+        footer={null}
       >
-        <Space direction="vertical" size={16} style={{ width: "100%" }}>
-          <Typography.Paragraph style={{ marginBottom: 0 }}>
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             {t("mockRuns.startModeDescription")}
           </Typography.Paragraph>
-          <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-            <Button onClick={() => setStartChoiceRun(null)}>
-              {t("common.cancel")}
-            </Button>
+          {mockRunStartModeSchema.options.map((mode) => (
             <Button
+              key={mode}
+              block
               onClick={async () => {
                 if (!startChoiceRun) return;
-                try {
-                  await actionMutation.mutateAsync({
-                    id: startChoiceRun.id,
-                    action: "start",
-                    body: { mode: mockRunStartModeSchema.enum.restart },
-                  });
-                  setStartChoiceRun(null);
-                } catch {
-                  // handled by mutation
-                }
+                await actionMutation.mutateAsync({ id: startChoiceRun.id, action: "start", body: { mode } });
+                setStartChoiceRun(null);
               }}
             >
-              {t("mockRuns.restartRun")}
+              {t(`mockRuns.startMode.${mode}`)}
             </Button>
-            <Button
-              type="primary"
-              onClick={async () => {
-                if (!startChoiceRun) return;
-                try {
-                  await actionMutation.mutateAsync({
-                    id: startChoiceRun.id,
-                    action: "start",
-                    body: { mode: mockRunStartModeSchema.enum.continue },
-                  });
-                  setStartChoiceRun(null);
-                } catch {
-                  // handled by mutation
-                }
-              }}
-            >
-              {t("mockRuns.continueRun")}
-            </Button>
-          </Space>
+          ))}
         </Space>
       </Modal>
     </>

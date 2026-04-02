@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { resolveParticipantAttributeDefinition } from "@surveysim/shared";
 import type {
   ConditionExpression,
   ParticipantIdentity,
+  ParticipantRandomConfigDto,
   ParticipantRuleInput,
   ParticipantTemplateDto,
   TemplatePreview,
@@ -18,34 +18,72 @@ function normalizeArray(value: string | string[]) {
   return Array.isArray(value) ? value : [value];
 }
 
-function randomNoise() {
-  const languageStyles = ["concise", "chatty", "hesitant", "direct", "detail-oriented"];
-  const lifeMoments = ["recently changed jobs", "commutes long distance", "shops online at night", "often discusses products with friends", "usually answers surveys on mobile"];
-  const bounded = (min: number, max: number) => Number((min + Math.random() * (max - min)).toFixed(2));
-  return {
-    languageStyle: languageStyles[Math.floor(Math.random() * languageStyles.length)],
-    decisiveness: bounded(0.25, 0.9),
-    lifeMoment: lifeMoments[Math.floor(Math.random() * lifeMoments.length)],
-    extremityBias: bounded(0.1, 0.85),
-    centralTendency: bounded(0.1, 0.85),
-    acquiescence: bounded(0.15, 0.8),
-    fatigue: bounded(0.05, 0.75),
-    attention: bounded(0.35, 0.95),
-    topicFamiliarity: bounded(0.1, 0.9),
-    socialDesirability: bounded(0.1, 0.8),
-    straightlining: bounded(0.05, 0.65),
-    noveltySeeking: bounded(0.1, 0.85),
-    skipOptionalRate: bounded(0.02, 0.3),
-    openTextVerbosity: bounded(0.15, 0.85),
+function hashSeed(input: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function createRng(seedSource?: string) {
+  let seed = hashSeed(seedSource && seedSource.trim() ? seedSource : `${Date.now()}_${Math.random()}`) || 1;
+  return () => {
+    seed += 0x6d2b79f5;
+    let value = seed;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-function randomPick<T>(items: T[]) {
-  return items[Math.floor(Math.random() * items.length)];
+function getNoiseAmplitude(config: ParticipantRandomConfigDto | undefined) {
+  const randomnessMap = { low: 0.55, medium: 1, high: 1.3 } as const;
+  const profileMap = { conservative: 0.85, balanced: 1, expressive: 1.2 } as const;
+  return randomnessMap[config?.randomnessLevel ?? "medium"] * profileMap[config?.noiseProfile ?? "balanced"];
+}
+
+function boundedValue(rng: () => number, min: number, max: number, amplitude: number) {
+  const midpoint = (min + max) / 2;
+  const halfRange = ((max - min) / 2) * amplitude;
+  const sampled = midpoint - halfRange + rng() * halfRange * 2;
+  const clamped = Math.min(max, Math.max(min, sampled));
+  return Number(clamped.toFixed(2));
+}
+
+function randomNoise(rng: () => number, config?: ParticipantRandomConfigDto) {
+  const languageStyles = ["concise", "chatty", "hesitant", "direct", "detail-oriented"];
+  const lifeMoments = ["recently changed jobs", "commutes long distance", "shops online at night", "often discusses products with friends", "usually answers tasks on mobile"];
+  const amplitude = getNoiseAmplitude(config);
+  return {
+    languageStyle: languageStyles[Math.floor(rng() * languageStyles.length)],
+    decisiveness: boundedValue(rng, 0.25, 0.9, amplitude),
+    lifeMoment: lifeMoments[Math.floor(rng() * lifeMoments.length)],
+    extremityBias: boundedValue(rng, 0.1, 0.85, amplitude),
+    centralTendency: boundedValue(rng, 0.1, 0.85, amplitude),
+    acquiescence: boundedValue(rng, 0.15, 0.8, amplitude),
+    fatigue: boundedValue(rng, 0.05, 0.75, amplitude),
+    attention: boundedValue(rng, 0.35, 0.95, amplitude),
+    topicFamiliarity: boundedValue(rng, 0.1, 0.9, amplitude),
+    socialDesirability: boundedValue(rng, 0.1, 0.8, amplitude),
+    straightlining: boundedValue(rng, 0.05, 0.65, amplitude),
+    noveltySeeking: boundedValue(rng, 0.1, 0.85, amplitude),
+    skipOptionalRate: boundedValue(rng, 0.02, 0.3, amplitude),
+    openTextVerbosity: boundedValue(rng, 0.15, 0.85, amplitude),
+  };
+}
+
+function randomPick<T>(items: T[], rng: () => number) {
+  return items[Math.floor(rng() * items.length)];
 }
 
 function hasScope(scope?: ConditionExpression) {
   return Boolean(scope);
+}
+
+function createSyntheticId(rng: () => number) {
+  return Array.from({ length: 8 }, () => Math.floor(rng() * 16).toString(16)).join("");
 }
 
 export class RuleEngineService {
@@ -121,26 +159,36 @@ export class RuleEngineService {
   generateIdentities(template: ParticipantTemplateDto, count: number) {
     const rules = [...template.rules].filter((rule) => rule.enabled).sort((a, b) => b.priority - a.priority);
     const templateAttributes = template.attributes ?? [];
-    const globallyAssignedAttributes = new Set(
-      rules.filter((rule) => !hasScope(rule.scope)).map((rule) => rule.assignment.attribute),
-    );
+    const globallyAssignedAttributes = new Set(rules.filter((rule) => !hasScope(rule.scope)).map((rule) => rule.assignment.attribute));
     const identities: GeneratedIdentity[] = [];
+    const baseSeed = template.randomConfig?.seed?.trim() || `${template.id}:${count}`;
+    const archetypeTags = [template.archetypeProfile?.label, ...(template.archetypeProfile?.seedTags ?? [])].filter(Boolean) as string[];
 
     for (let index = 0; index < count; index += 1) {
+      const rng = createRng(`${baseSeed}:${index + 1}`);
       const identity: GeneratedIdentity = {
         interests: [],
         customTags: [],
-        noise: randomNoise(),
-        extra: { syntheticId: randomUUID().slice(0, 8) },
+        noise: randomNoise(rng, template.randomConfig),
+        extra: {
+          syntheticId: createSyntheticId(rng),
+          archetypeLabel: template.archetypeProfile?.label,
+          archetypeSeedTags: archetypeTags,
+          randomnessLevel: template.randomConfig?.randomnessLevel,
+        },
         _meta: { appliedRuleIds: [] },
       };
       const lockedAttributes = new Set<string>();
+
+      if (archetypeTags.length) {
+        identity.customTags = Array.from(new Set([...(identity.customTags ?? []), ...archetypeTags]));
+      }
 
       for (const rule of rules) {
         if (!this.matchesScope(identity, rule.scope)) continue;
         const attribute = rule.assignment.attribute;
         if (lockedAttributes.has(attribute)) continue;
-        const value = this.resolveAssignment(rule);
+        const value = this.resolveAssignment(rule, rng);
         if (value === undefined) continue;
         (identity as unknown as Record<string, unknown>)[attribute] = value;
         lockedAttributes.add(attribute);
@@ -154,24 +202,28 @@ export class RuleEngineService {
           continue;
         }
 
-        if (!globallyAssignedAttributes.has(attribute.key)) {
+        if (!globallyAssignedAttributes.has(attribute.key) && attribute.key !== "customTags") {
           continue;
         }
 
         const presets = attribute.presetValues ?? [];
         if (!presets.length) {
-          (identity as Record<string, unknown>)[attribute.key] = attribute.valueType === "multi"
-            ? []
-            : "unspecified";
+          (identity as Record<string, unknown>)[attribute.key] = attribute.valueType === "multi" ? [] : "unspecified";
           continue;
         }
 
         if (attribute.valueType === "multi") {
-          (identity as Record<string, unknown>)[attribute.key] = [randomPick(presets).value];
+          const primary = randomPick(presets, rng).value;
+          const nextValues = new Set<string>(attribute.key === "customTags" ? [...(identity.customTags ?? []), primary] : [primary]);
+          const addSecond = template.randomConfig?.randomnessLevel === "high" && presets.length > 1 && rng() > 0.55;
+          if (addSecond) {
+            nextValues.add(randomPick(presets, rng).value);
+          }
+          (identity as Record<string, unknown>)[attribute.key] = Array.from(nextValues);
           continue;
         }
 
-        (identity as Record<string, unknown>)[attribute.key] = randomPick(presets).value;
+        (identity as Record<string, unknown>)[attribute.key] = randomPick(presets, rng).value;
       }
 
       identities.push(identity);
@@ -183,14 +235,14 @@ export class RuleEngineService {
     });
   }
 
-  private resolveAssignment(rule: ParticipantRuleInput | ParticipantTemplateDto["rules"][number]) {
+  private resolveAssignment(rule: ParticipantRuleInput | ParticipantTemplateDto["rules"][number], rng: () => number) {
     if (rule.assignment.mode === "fixed") {
       return rule.assignment.fixedValue;
     }
 
     const distribution = rule.assignment.distribution ?? [];
     if (distribution.length === 0) return undefined;
-    const point = Math.random() * 100;
+    const point = rng() * 100;
     let cursor = 0;
     for (const item of distribution) {
       cursor += item.percentage;

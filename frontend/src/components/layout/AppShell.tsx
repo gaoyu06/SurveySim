@@ -1,4 +1,4 @@
-import { DatabaseOutlined, ExperimentOutlined, FileTextOutlined, RadarChartOutlined, SettingOutlined, TeamOutlined } from "@ant-design/icons";
+import { DatabaseOutlined, ExperimentOutlined, FileTextOutlined, RadarChartOutlined, SettingOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { Button, Layout, Menu, Select, Space, Typography } from "antd";
 import { useEffect, useMemo } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -20,19 +20,50 @@ export function AppShell() {
     return () => document.body.classList.remove("app-shell-body");
   }, []);
 
-  const items = useMemo(
-    () => [
-      { key: "/", icon: <RadarChartOutlined />, label: t("nav.dashboard") },
-      { key: "/llm-configs", icon: <SettingOutlined />, label: t("nav.llmConfigs") },
-      { key: "/templates", icon: <TeamOutlined />, label: t("nav.templates") },
-      { key: "/surveys", icon: <FileTextOutlined />, label: t("nav.surveys") },
-      { key: "/mock-runs", icon: <ExperimentOutlined />, label: t("nav.mockRuns") },
-      { key: "/reports", icon: <DatabaseOutlined />, label: t("nav.reports") },
-    ],
-    [t],
+  const items = useMemo(() => {
+    const grouped: any[] = [
+      {
+        type: "group",
+        label: t("nav.groupWork"),
+        children: [
+          { key: "/", icon: <RadarChartOutlined />, label: t("nav.dashboard") },
+          { key: "/content-tasks", icon: <FileTextOutlined />, label: t("nav.surveys") },
+          { key: "/mock-runs", icon: <ExperimentOutlined />, label: t("nav.mockRuns") },
+          { key: "/reports", icon: <DatabaseOutlined />, label: t("nav.reports") },
+        ],
+      },
+      {
+        type: "group",
+        label: t("nav.groupConfig"),
+        children: [
+          { key: "/llm-configs", icon: <SettingOutlined />, label: t("nav.llmConfigs") },
+          { key: "/templates", icon: <TeamOutlined />, label: t("nav.templates") },
+        ],
+      },
+    ];
+
+    if (user?.role === "admin") {
+      grouped.push({
+        type: "group",
+        label: t("nav.groupAdmin"),
+        children: [
+          { key: "/admin/users", icon: <UserOutlined />, label: t("nav.userManagement") },
+          { key: "/admin/settings", icon: <SettingOutlined />, label: t("nav.systemSettings") },
+        ],
+      });
+    }
+
+    return grouped;
+  }, [t, user?.role]);
+
+  const flatItems = useMemo(
+    () => items.flatMap((group: any) => ("children" in group ? group.children : [group])),
+    [items],
   );
 
-  const currentPage = items.find((item) => item.key === (location.pathname === "/" ? "/" : `/${location.pathname.split("/")[1]}`));
+  const currentKey = location.pathname === "/" ? "/" : `/${location.pathname.split("/").slice(1, 3).join("/")}`.replace(/\/$/, "");
+  const fallbackKey = location.pathname === "/" ? "/" : `/${location.pathname.split("/")[1]}`;
+  const currentPage = flatItems.find((item: any) => item.key === currentKey) ?? flatItems.find((item: any) => item.key === fallbackKey);
 
   return (
     <Layout className="app-shell">
@@ -45,7 +76,7 @@ export function AppShell() {
           <Menu
             theme="dark"
             mode="inline"
-            selectedKeys={[location.pathname === "/" ? "/" : `/${location.pathname.split("/")[1]}`]}
+            selectedKeys={[currentPage?.key ?? fallbackKey]}
             items={items}
             onClick={({ key }) => navigate(key)}
             style={{ background: "transparent", borderInlineEnd: "none", marginTop: 12 }}

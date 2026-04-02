@@ -26,10 +26,10 @@ export const structuredAnswerSchema = z.object({
   confidence: z.number().min(0).max(1).optional(),
 });
 
-export const mockRunCreateInputSchema = z.object({
+const mockRunCreateBaseSchema = z.object({
   name: z.string().min(1).max(120),
   participantTemplateId: z.string(),
-  surveyId: z.string(),
+  contentTaskId: z.string().min(1),
   llmConfigId: z.string(),
   participantCount: z.number().int().min(1).max(1000),
   concurrency: z.number().int().min(1).max(64),
@@ -38,6 +38,15 @@ export const mockRunCreateInputSchema = z.object({
   extraSystemPrompt: z.string().optional(),
   extraRespondentPrompt: z.string().optional(),
 });
+
+export const mockRunCreateInputSchema = z.union([
+  mockRunCreateBaseSchema,
+  mockRunCreateBaseSchema.omit({ contentTaskId: true }).extend({ surveyId: z.string().min(1) }),
+]).transform((value) => ({
+  ...value,
+  contentTaskId: "contentTaskId" in value ? value.contentTaskId : value.surveyId,
+  surveyId: "surveyId" in value ? value.surveyId : value.contentTaskId,
+}));
 
 export const mockRunStartInputSchema = z.object({
   mode: mockRunStartModeSchema.default("restart"),
@@ -68,8 +77,22 @@ export const mockRunProgressSchema = z.object({
   canceled: z.number().int(),
 });
 
-export const mockRunSchema = mockRunCreateInputSchema.extend({
+export const mockRunSchema = z.object({
   id: z.string(),
+  name: z.string().min(1).max(120),
+  ownerId: z.string().optional(),
+  ownerEmail: z.string().email().optional(),
+  isOwnedByCurrentUser: z.boolean().optional(),
+  participantTemplateId: z.string(),
+  contentTaskId: z.string(),
+  surveyId: z.string(),
+  llmConfigId: z.string(),
+  participantCount: z.number().int().min(1).max(1000),
+  concurrency: z.number().int().min(1).max(64),
+  reuseIdentity: z.boolean(),
+  reusePersonaPrompt: z.boolean(),
+  extraSystemPrompt: z.string().optional(),
+  extraRespondentPrompt: z.string().optional(),
   status: runStatusSchema,
   progress: mockRunProgressSchema,
   startedAt: z.string().nullable().optional(),
@@ -79,19 +102,47 @@ export const mockRunSchema = mockRunCreateInputSchema.extend({
   updatedAt: z.string(),
 });
 
-export const personaGenerationPayloadSchema = z.object({
-  identity: participantIdentitySchema,
-  survey: surveySchema,
-  extraPrompt: z.string().optional(),
-});
+export const personaGenerationPayloadSchema = z.union([
+  z.object({
+    identity: participantIdentitySchema,
+    contentTask: surveySchema,
+    extraPrompt: z.string().optional(),
+  }),
+  z.object({
+    identity: participantIdentitySchema,
+    survey: surveySchema,
+    extraPrompt: z.string().optional(),
+  }),
+]).transform((value) => ({
+  identity: value.identity,
+  contentTask: "contentTask" in value ? value.contentTask : value.survey,
+  survey: "survey" in value ? value.survey : value.contentTask,
+  extraPrompt: value.extraPrompt,
+}));
 
-export const responseGenerationPayloadSchema = z.object({
-  survey: surveySchema,
-  identity: participantIdentitySchema,
-  personaPrompt: z.string(),
-  extraSystemPrompt: z.string().optional(),
-  extraRespondentPrompt: z.string().optional(),
-});
+export const responseGenerationPayloadSchema = z.union([
+  z.object({
+    contentTask: surveySchema,
+    identity: participantIdentitySchema,
+    personaPrompt: z.string(),
+    extraSystemPrompt: z.string().optional(),
+    extraRespondentPrompt: z.string().optional(),
+  }),
+  z.object({
+    survey: surveySchema,
+    identity: participantIdentitySchema,
+    personaPrompt: z.string(),
+    extraSystemPrompt: z.string().optional(),
+    extraRespondentPrompt: z.string().optional(),
+  }),
+]).transform((value) => ({
+  contentTask: "contentTask" in value ? value.contentTask : value.survey,
+  survey: "survey" in value ? value.survey : value.contentTask,
+  identity: value.identity,
+  personaPrompt: value.personaPrompt,
+  extraSystemPrompt: value.extraSystemPrompt,
+  extraRespondentPrompt: value.extraRespondentPrompt,
+}));
 
 export type MockRunCreateInput = z.infer<typeof mockRunCreateInputSchema>;
 export type MockRunStartInput = z.infer<typeof mockRunStartInputSchema>;

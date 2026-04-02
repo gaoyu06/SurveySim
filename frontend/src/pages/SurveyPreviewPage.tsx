@@ -261,7 +261,7 @@ export function SurveyPreviewPage() {
 
   const surveyQuery = useQuery({
     queryKey: ["survey", id],
-    queryFn: () => apiClient.get<SurveyRecord>(`/surveys/${id}`),
+    queryFn: () => apiClient.get<SurveyRecord>(`/content-tasks/${id}`),
     enabled: Boolean(id),
   });
 
@@ -271,7 +271,7 @@ export function SurveyPreviewPage() {
         title={surveyQuery.data?.title ?? t("surveys.previewTitle")}
         subtitle={t("surveys.previewSubtitle")}
         actions={
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/surveys")}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/content-tasks")}>
             {t("common.back")}
           </Button>
         }

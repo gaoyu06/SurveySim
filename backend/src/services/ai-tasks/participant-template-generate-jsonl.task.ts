@@ -1,14 +1,18 @@
 import {
   getBuiltinParticipantAttributes,
   participantTemplateAiGenerateJsonlRecordSchema,
+  type ParticipantArchetypeProfileDto,
   type ParticipantAttributeDefinitionDto,
+  type ParticipantRandomConfigDto,
 } from "@surveysim/shared";
 import { renderSchemaGuide } from "./prompt-support/schema-text.js";
 import { renderPromptSections } from "./prompt-support/prompt-sections.js";
 
 type BuildParticipantTemplateGenerateJsonlTaskInput = {
   prompt: string;
+  archetypeProfile?: ParticipantArchetypeProfileDto;
   attributes: ParticipantAttributeDefinitionDto[];
+  randomConfig?: ParticipantRandomConfigDto;
   templateName?: string;
   templateDescription?: string;
 };
@@ -50,6 +54,8 @@ export function buildParticipantTemplateGenerateJsonlTask(input: BuildParticipan
           "Optionally emit note records at the end.",
           "No markdown. No prose. No arrays. No wrapper object.",
           "Start streaming as soon as the template record is ready. Do not wait to finish all rules before emitting.",
+          "If an archetype profile is provided, encode it into the template record and align the rules with that population.",
+          "If randomConfig is provided, preserve it in the template record and keep the generated rules compatible with that randomness target.",
         ].join("\n"),
       },
       {
@@ -61,6 +67,7 @@ export function buildParticipantTemplateGenerateJsonlTask(input: BuildParticipan
               "Generate a reusable participant template draft from the natural language request.",
               "Keep the rule set practical and compact for an MVP editor.",
               "Prefer fewer, high-signal rules over a bloated rule list.",
+              "Use the archetype profile to make the target population explicit when available.",
             ],
           },
           {
@@ -94,7 +101,7 @@ export function buildParticipantTemplateGenerateJsonlTask(input: BuildParticipan
           {
             title: "Examples",
             lines: [
-              '{"recordType":"template","name":"Streaming audience baseline","description":"Audience mix for cross-market entertainment survey","attributes":[{"key":"country","displayName":"国家 / Country","valueType":"single","presetValues":[{"value":"united_states","label":"美国 / United States"},{"value":"japan","label":"日本 / Japan"}],"builtin":true},{"key":"gender","displayName":"性别 / Gender","valueType":"single","presetValues":[{"value":"female","label":"女性 / Female"},{"value":"male","label":"男性 / Male"}],"builtin":true},{"key":"fandomIntensity","displayName":"追剧强度 / Fandom intensity","description":"How intensely the audience follows serialized entertainment","valueType":"single","presetValues":[{"value":"casual","label":"轻度 / Casual"},{"value":"moderate","label":"中度 / Moderate"},{"value":"heavy","label":"重度 / Heavy"}],"builtin":false}],"sampleSizePreview":300}',
+              '{"recordType":"template","name":"Streaming audience baseline","description":"Audience mix for cross-market entertainment survey","archetypeProfile":{"label":"Streaming entertainment audience","seedTags":["streaming","entertainment"]},"attributes":[{"key":"country","displayName":"国家 / Country","valueType":"single","presetValues":[{"value":"united_states","label":"美国 / United States"},{"value":"japan","label":"日本 / Japan"}],"builtin":true},{"key":"gender","displayName":"性别 / Gender","valueType":"single","presetValues":[{"value":"female","label":"女性 / Female"},{"value":"male","label":"男性 / Male"}],"builtin":true},{"key":"fandomIntensity","displayName":"追剧强度 / Fandom intensity","description":"How intensely the audience follows serialized entertainment","valueType":"single","presetValues":[{"value":"casual","label":"轻度 / Casual"},{"value":"moderate","label":"中度 / Moderate"},{"value":"heavy","label":"重度 / Heavy"}],"builtin":false}],"randomConfig":{"randomnessLevel":"medium","noiseProfile":"balanced"},"sampleSizePreview":300}',
               '{"recordType":"rule","name":"Market split","enabled":true,"priority":100,"assignment":{"attribute":"country","mode":"distribution","distribution":[{"value":"united_states","percentage":55,"label":"United States"},{"value":"japan","percentage":45,"label":"Japan"}]}}',
               '{"recordType":"rule","name":"Female skew among younger respondents","enabled":true,"priority":90,"scope":{"type":"leaf","field":"ageRange","operator":"in","value":["25_34","18_24"]},"assignment":{"attribute":"gender","mode":"distribution","distribution":[{"value":"female","percentage":58,"label":"Female"},{"value":"male","percentage":42,"label":"Male"}]}}',
               '{"recordType":"rule","name":"Heavy fandom among gamers","enabled":true,"priority":88,"scope":{"type":"leaf","field":"interests","operator":"contains","value":["gaming"]},"assignment":{"attribute":"fandomIntensity","mode":"distribution","distribution":[{"value":"heavy","percentage":60,"label":"Heavy"},{"value":"moderate","percentage":30,"label":"Moderate"},{"value":"casual","percentage":10,"label":"Casual"}]}}',
@@ -104,6 +111,13 @@ export function buildParticipantTemplateGenerateJsonlTask(input: BuildParticipan
           {
             title: "Available Attributes And Presets",
             lines: [renderAttributeCatalog(input.attributes)],
+          },
+          {
+            title: "Archetype And Randomness Context",
+            lines: [
+              input.archetypeProfile ? `Archetype profile: ${JSON.stringify(input.archetypeProfile)}` : undefined,
+              input.randomConfig ? `Random config: ${JSON.stringify(input.randomConfig)}` : undefined,
+            ],
           },
           {
             title: "Request Context",

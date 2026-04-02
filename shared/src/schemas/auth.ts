@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { userRoleSchema } from "./admin.js";
 
 const emailInputSchema = z
   .string()
@@ -14,6 +15,7 @@ const passwordInputSchema = z
 export const userSchema = z.object({
   id: z.string(),
   email: z.string().email(),
+  role: userRoleSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
 });

@@ -32,10 +32,17 @@ enum LogLevel {
   ERROR
 }
 
+enum UserRole {
+  ADMIN
+  USER
+}
+
 model User {
   id           String              @id @default(cuid())
   email        String              @unique
   passwordHash String
+  role         UserRole            @default(USER)
+  dailyUsageLimit Int?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
 
@@ -44,6 +51,7 @@ model User {
   surveys      Survey[]
   mockRuns     MockRun[]
   files        StoredFile[]
+  dailyUsages  UserDailyUsage[]
 }
 
 model LlmProviderConfig {
@@ -59,6 +67,7 @@ model LlmProviderConfig {
   concurrency Int
   retryCount  Int
   isDefault   Boolean  @default(false)
+  isPublic    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -321,4 +330,25 @@ model AggregatedReport {
   updatedAt DateTime @updatedAt
 
   mockRun MockRun @relation(fields: [mockRunId], references: [id], onDelete: Cascade)
+}
+
+model SystemConfig {
+  id                 String   @id @default("system")
+  defaultDailyUsageLimit Int  @default(20)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model UserDailyUsage {
+  id         String   @id @default(cuid())
+  userId     String
+  dateKey    String
+  usageCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey])
+  @@index([userId, dateKey])
 }

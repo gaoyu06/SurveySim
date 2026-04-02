@@ -49,6 +49,7 @@ async function persistSurveyGraph(db: PrismaClient | Parameters<Parameters<typeo
 }
 
 const includeSurveyRelations = {
+  user: true,
   sections: { orderBy: { displayOrder: "asc" as const } },
   questions: { include: { options: { orderBy: { displayOrder: "asc" as const } } }, orderBy: { displayOrder: "asc" as const } },
 };
@@ -61,9 +62,21 @@ export const surveyRepository = {
       orderBy: { updatedAt: "desc" },
     });
   },
+  listAll() {
+    return prisma.survey.findMany({
+      include: includeSurveyRelations,
+      orderBy: { updatedAt: "desc" },
+    });
+  },
   getById(userId: string, id: string) {
     return prisma.survey.findFirst({
       where: { userId, id },
+      include: includeSurveyRelations,
+    });
+  },
+  getAnyById(id: string) {
+    return prisma.survey.findUnique({
+      where: { id },
       include: includeSurveyRelations,
     });
   },

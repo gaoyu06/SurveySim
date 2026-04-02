@@ -15,13 +15,16 @@ import {
 } from "@surveysim/shared";
 import { fromJson } from "../lib/json.js";
 import { surveyRepository } from "../repositories/survey.repository.js";
+import type { AuthUserContext } from "../types/auth.js";
+import { isAdmin, resolveDataScope } from "../utils/access.js";
 import { LlmService } from "./llm/llm.service.js";
+import { UsageLimitService } from "./usage-limit.service.js";
 import { buildSurveyExtractJsonlTask, buildSurveyRepairJsonlRecordTask } from "./ai-tasks/index.js";
 import { toIsoString } from "../utils/serialize.js";
 
 function summarizeRecord(record: SurveyImportJsonlRecord) {
   if (record.recordType === "survey_meta") {
-    return `survey_meta · ${record.title}`;
+    return `content_task_meta · ${record.title}`;
   }
 
   if (record.recordType === "section") {
@@ -57,10 +60,13 @@ function toRecordEvent(
 function mapSurvey(survey: any) {
   return {
     id: survey.id,
+    ownerId: survey.userId,
+    ownerEmail: survey.user?.email,
     title: survey.title,
     description: survey.description ?? undefined,
     rawText: survey.sourceText,
     schema: fromJson<SurveySchemaDto>(survey.schema),
+    isOwnedByCurrentUser: false,
     createdAt: toIsoString(survey.createdAt)!,
     updatedAt: toIsoString(survey.updatedAt)!,
   };
@@ -68,12 +74,16 @@ function mapSurvey(survey: any) {
 
 export class SurveyService {
   private readonly llmService = new LlmService();
+  private readonly usageLimitService = new UsageLimitService();
 
-  async retryImportRecord(userId: string, input: unknown): Promise<SurveyImportRecordEvent> {
+  async retryImportRecord(user: AuthUserContext, input: unknown, options?: { consumeUsage?: boolean }): Promise<SurveyImportRecordEvent> {
+    if (options?.consumeUsage !== false) {
+      await this.usageLimitService.consumeOrThrow(user, "content task import retry");
+    }
     const payload = surveyImportRetryRecordInputSchema.parse(input);
     const config = payload.llmConfigId
-      ? await this.llmService.getRuntimeConfig(userId, payload.llmConfigId)
-      : await this.llmService.getDefaultRuntimeConfig(userId);
+      ? await this.llmService.getRuntimeConfig(user, payload.llmConfigId)
+      : await this.llmService.getDefaultRuntimeConfig(user.id);
 
     const repairTask = buildSurveyRepairJsonlRecordTask({
       rawText: payload.rawText,
@@ -97,52 +107,54 @@ export class SurveyService {
     );
   }
 
-  async list(userId: string) {
-    const surveys = await surveyRepository.list(userId);
-    return surveys.map((survey) => mapSurvey(survey));
+  async list(user: AuthUserContext, scope?: unknown) {
+    const dataScope = resolveDataScope(user, scope);
+    const surveys = dataScope === "all" ? await surveyRepository.listAll() : await surveyRepository.list(user.id);
+    return surveys.map((survey) => ({ ...mapSurvey(survey), isOwnedByCurrentUser: survey.userId === user.id }));
   }
 
-  async get(userId: string, id: string) {
-    const survey = await surveyRepository.getById(userId, id);
-    if (!survey) throw new Error("Survey not found");
-    return mapSurvey(survey);
+  async get(user: AuthUserContext, id: string) {
+    const survey = isAdmin(user) ? await surveyRepository.getAnyById(id) : await surveyRepository.getById(user.id, id);
+    if (!survey) throw new Error("Content task not found");
+    return { ...mapSurvey(survey), isOwnedByCurrentUser: survey.userId === user.id };
   }
 
   async delete(userId: string, id: string) {
     const existing = await surveyRepository.getById(userId, id);
     if (!existing) {
-      throw new Error("Survey not found");
+      throw new Error("Content task not found");
     }
 
     const referencingRuns = await surveyRepository.countReferencingRuns(userId, id);
     if (referencingRuns > 0) {
-      throw new Error(`This survey is used by ${referencingRuns} mock run(s) and cannot be deleted`);
+      throw new Error(`This content task is used by ${referencingRuns} mock run(s) and cannot be deleted`);
     }
 
     await surveyRepository.delete(userId, id);
     return { success: true };
   }
 
-  async importDraft(userId: string, input: unknown): Promise<SurveyDraft> {
+  async importDraft(user: AuthUserContext, input: unknown): Promise<SurveyDraft> {
     let finalDraft: SurveyDraft | null = null;
-    for await (const event of this.importDraftStream(userId, input)) {
+    for await (const event of this.importDraftStream(user, input)) {
       if (event.type === "draft") {
         finalDraft = event.draft;
       }
     }
     if (!finalDraft) {
-      throw new Error("Survey draft extraction did not produce a draft");
+      throw new Error("Content task draft extraction did not produce a draft");
     }
     return finalDraft;
   }
 
-  async *importDraftStream(userId: string, input: unknown): AsyncGenerator<SurveyImportStreamEvent> {
-    yield { type: "status", stage: "queued", message: "Survey extraction queued" };
+  async *importDraftStream(user: AuthUserContext, input: unknown): AsyncGenerator<SurveyImportStreamEvent> {
+    await this.usageLimitService.consumeOrThrow(user, "content task import");
+    yield { type: "status", stage: "queued", message: "Content task extraction queued" };
 
     const payload = surveyImportInputSchema.parse(input);
     const config = payload.llmConfigId
-      ? await this.llmService.getRuntimeConfig(userId, payload.llmConfigId)
-      : await this.llmService.getDefaultRuntimeConfig(userId);
+      ? await this.llmService.getRuntimeConfig(user, payload.llmConfigId)
+      : await this.llmService.getDefaultRuntimeConfig(user.id);
 
     let draft = createEmptySurveyDraft(payload.rawText, payload.title);
     const queue: SurveyImportStreamEvent[] = [];
@@ -174,13 +186,13 @@ export class SurveyService {
         draft.extractionNotes.push(`Record ${lineNumber} repair attempted: ${message}`);
         push({ type: "status", stage: "repairing", message: `Record ${lineNumber} invalid, repairing with LLM` });
         try {
-          const retried = await this.retryImportRecord(userId, {
+          const retried = await this.retryImportRecord(user, {
             rawText: payload.rawText,
             invalidLine: trimmed,
             errorMessage: message,
             llmConfigId: payload.llmConfigId,
             index: lineNumber,
-          });
+          }, { consumeUsage: false });
           push(retried);
           record = surveyImportJsonlRecordSchema.parse(JSON.parse(retried.repairedLine!));
         } catch (repairError) {
@@ -194,7 +206,7 @@ export class SurveyService {
       draft = applySurveyImportRecordToDraft(draft, record);
     };
 
-    push({ type: "status", stage: "extracting", message: "Streaming questionnaire JSONL records from LLM" });
+    push({ type: "status", stage: "extracting", message: "Streaming content-task JSONL records from LLM" });
     const extractTask = buildSurveyExtractJsonlTask({ rawText: payload.rawText, title: payload.title });
 
     const streamTask = this.llmService
@@ -255,7 +267,7 @@ export class SurveyService {
       throw failure;
     }
 
-    yield { type: "status", stage: "normalizing", message: "Normalizing validated JSONL records into survey schema" };
+    yield { type: "status", stage: "normalizing", message: "Normalizing validated JSONL records into content-task schema" };
 
     const finalDraft = finalizeSurveyDraft(draft, payload.title);
     yield { type: "draft", draft: finalDraft };
@@ -266,15 +278,15 @@ export class SurveyService {
     const payload = surveySaveInputSchema.parse(input);
     const normalized = { ...payload, schema: ensureSurveySchemaIds(payload.schema) };
     const created = await surveyRepository.create(userId, normalized);
-    return mapSurvey(created);
+    return { ...mapSurvey(created), isOwnedByCurrentUser: true };
   }
 
   async update(userId: string, id: string, input: unknown) {
     const payload = surveySaveInputSchema.parse(input);
     const existing = await surveyRepository.getById(userId, id);
-    if (!existing) throw new Error("Survey not found");
+    if (!existing) throw new Error("Content task not found");
     const normalized = { ...payload, schema: ensureSurveySchemaIds(payload.schema) };
     const updated = await surveyRepository.update(userId, id, normalized);
-    return mapSurvey(updated);
+    return { ...mapSurvey(updated), isOwnedByCurrentUser: true };
   }
 }

@@ -5,6 +5,7 @@ import { prisma } from "../lib/db.js";
 import path from "node:path";
 import { env } from "../config/env.js";
 import { ensureDir } from "../utils/fs.js";
+import { parseImportDocument } from "../services/document-import.service.js";
 
 async function resolveImportBody(request: FastifyRequest) {
   let body = request.body as Record<string, unknown> | undefined;
@@ -19,15 +20,20 @@ async function resolveImportBody(request: FastifyRequest) {
     await prisma.storedFile.create({
       data: {
         userId: request.authUser!.id,
-        kind: "survey-upload",
+        kind: "content-task-upload",
         originalName: file.filename,
         mimeType: file.mimetype,
         size: buffer.length,
         path: filePath,
       },
     });
+    const parsedDocument = await parseImportDocument({
+      buffer,
+      filename: file.filename,
+      mimeType: file.mimetype,
+    });
     body = {
-      rawText: buffer.toString("utf-8"),
+      rawText: parsedDocument.rawText,
       title: file.filename,
       llmConfigId: file.fields.llmConfigId && "value" in file.fields.llmConfigId ? String(file.fields.llmConfigId.value) : undefined,
     };
@@ -37,12 +43,12 @@ async function resolveImportBody(request: FastifyRequest) {
 
 export function surveyControllerFactory(service: SurveyService) {
   return {
-    list: async (request: FastifyRequest, reply: FastifyReply) => {
-      reply.send(await service.list(request.authUser!.id));
+    list: async (request: FastifyRequest<{ Querystring: { scope?: string } }>, reply: FastifyReply) => {
+      reply.send(await service.list(request.authUser!, request.query.scope));
     },
     get: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {
-        reply.send(await service.get(request.authUser!.id, request.params.id));
+        reply.send(await service.get(request.authUser!, request.params.id));
       } catch (error) {
         reply.code(404).send({ message: error instanceof Error ? error.message : String(error) });
       }
@@ -50,7 +56,7 @@ export function surveyControllerFactory(service: SurveyService) {
     importDraft: async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const body = await resolveImportBody(request);
-        reply.send(await service.importDraft(request.authUser!.id, body));
+        reply.send(await service.importDraft(request.authUser!, body));
       } catch (error) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }
@@ -66,7 +72,7 @@ export function surveyControllerFactory(service: SurveyService) {
         });
         reply.raw.write(": connected\n\n");
 
-        for await (const event of service.importDraftStream(request.authUser!.id, body)) {
+        for await (const event of service.importDraftStream(request.authUser!, body)) {
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
         }
 
@@ -86,7 +92,7 @@ export function surveyControllerFactory(service: SurveyService) {
     },
     retryImportRecord: async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        reply.send(await service.retryImportRecord(request.authUser!.id, request.body));
+        reply.send(await service.retryImportRecord(request.authUser!, request.body));
       } catch (error) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }

@@ -1,11 +1,14 @@
 import {
   normalizeParticipantAttributeDefinitions,
+  participantRandomConfigSchema,
   participantRuleInputSchema,
   participantTemplateAiGenerateJsonlRecordSchema,
   participantTemplateAiGenerateInputSchema,
   participantTemplateAiGenerateResultSchema,
   participantTemplateInputSchema,
+  type ParticipantArchetypeProfileDto,
   type ParticipantAttributeDefinitionDto,
+  type ParticipantRandomConfigDto,
   type ParticipantTemplateAiGenerateJsonlRecord,
   type ParticipantTemplateAiGenerateResult,
   type ParticipantTemplateAiGenerateStreamEvent,
@@ -14,20 +17,53 @@ import {
 } from "@surveysim/shared";
 import { fromJson } from "../lib/json.js";
 import { participantTemplateRepository } from "../repositories/participant-template.repository.js";
+import type { AuthUserContext } from "../types/auth.js";
+import { isAdmin, resolveDataScope } from "../utils/access.js";
 import { RuleEngineService } from "./rule-engine.service.js";
 import { toIsoString } from "../utils/serialize.js";
 import { LlmService } from "./llm/llm.service.js";
+import { UsageLimitService } from "./usage-limit.service.js";
 import { buildParticipantTemplateGenerateJsonlTask } from "./ai-tasks/participant-template-generate-jsonl.task.js";
 import { buildParticipantTemplateRepairJsonlRecordTask } from "./ai-tasks/participant-template-repair-jsonl-record.task.js";
 
+type StoredTemplateDimensions =
+  | Array<string | Partial<ParticipantAttributeDefinitionDto>>
+  | {
+      attributes?: Array<string | Partial<ParticipantAttributeDefinitionDto>>;
+      archetypeProfile?: ParticipantArchetypeProfileDto;
+      randomConfig?: ParticipantRandomConfigDto;
+    };
+
+function parseStoredTemplateDimensions(raw: unknown) {
+  const parsed = fromJson<StoredTemplateDimensions>(raw as never);
+
+  if (Array.isArray(parsed)) {
+    return {
+      attributes: parsed,
+      archetypeProfile: undefined,
+      randomConfig: participantRandomConfigSchema.parse({}),
+    };
+  }
+
+  return {
+    attributes: parsed?.attributes ?? [],
+    archetypeProfile: parsed?.archetypeProfile,
+    randomConfig: participantRandomConfigSchema.parse(parsed?.randomConfig ?? {}),
+  };
+}
+
 function mapTemplate(template: Awaited<ReturnType<typeof participantTemplateRepository.getById>> extends infer T ? NonNullable<T> : never): ParticipantTemplateDto {
+  const stored = parseStoredTemplateDimensions(template.dimensions);
   return {
     id: template.id,
+    ownerId: template.userId,
+    ownerEmail: template.user.email,
+    isOwnedByCurrentUser: false,
     name: template.name,
     description: template.description ?? undefined,
-    attributes: normalizeParticipantAttributeDefinitions(
-      fromJson<Array<string | Partial<ParticipantAttributeDefinitionDto>>>(template.dimensions),
-    ),
+    archetypeProfile: stored.archetypeProfile,
+    attributes: normalizeParticipantAttributeDefinitions(stored.attributes),
+    randomConfig: stored.randomConfig,
     sampleSizePreview: template.sampleSizePreview,
     createdAt: toIsoString(template.createdAt)!,
     updatedAt: toIsoString(template.updatedAt)!,
@@ -47,6 +83,7 @@ function mapTemplate(template: Awaited<ReturnType<typeof participantTemplateRepo
 export class ParticipantTemplateService {
   private readonly ruleEngine = new RuleEngineService();
   private readonly llmService = new LlmService();
+  private readonly usageLimitService = new UsageLimitService();
 
   private parseTemplatePayload(input: unknown) {
     const payload = input as { template?: unknown; rules?: unknown[] };
@@ -56,6 +93,7 @@ export class ParticipantTemplateService {
     const template = {
       ...parsedTemplate,
       attributes: normalizeParticipantAttributeDefinitions(parsedTemplate.attributes),
+      randomConfig: participantRandomConfigSchema.parse(parsedTemplate.randomConfig ?? {}),
     };
     const rules = rulesSource.map((rule) => participantRuleInputSchema.parse(rule));
     return { template, rules };
@@ -115,15 +153,17 @@ export class ParticipantTemplateService {
     throw new Error(`Template rules conflict. Please fix the following issues before saving:\n${details}`);
   }
 
-  async list(userId: string) {
-    const templates = await participantTemplateRepository.list(userId);
-    return templates.map((template) => mapTemplate(template));
+  async list(user: AuthUserContext, scope?: unknown) {
+    const dataScope = resolveDataScope(user, scope);
+    const templates = dataScope === "all" ? await participantTemplateRepository.listAll() : await participantTemplateRepository.list(user.id);
+    return templates.map((template) => ({ ...mapTemplate(template), isOwnedByCurrentUser: template.userId === user.id }));
   }
 
-  async get(userId: string, id: string) {
-    const template = await participantTemplateRepository.getById(userId, id);
+  async get(user: AuthUserContext | string, id: string) {
+    const viewer = typeof user === "string" ? { id: user, email: "", role: "user" as const } : user;
+    const template = isAdmin(viewer) ? await participantTemplateRepository.getAnyById(id) : await participantTemplateRepository.getById(viewer.id, id);
     if (!template) throw new Error("Participant template not found");
-    return mapTemplate(template);
+    return { ...mapTemplate(template), isOwnedByCurrentUser: template.userId === viewer.id };
   }
 
   async create(userId: string, input: unknown) {
@@ -165,7 +205,9 @@ export class ParticipantTemplateService {
       template: {
         name: `${existing.name} Copy`,
         description: existing.description,
+        archetypeProfile: existing.archetypeProfile,
         attributes: existing.attributes,
+        randomConfig: existing.randomConfig,
         sampleSizePreview: existing.sampleSizePreview,
       },
       rules: existing.rules.map((rule) => ({
@@ -184,9 +226,9 @@ export class ParticipantTemplateService {
     return this.ruleEngine.preview(template, sampleSize);
   }
 
-  async generateWithAi(userId: string, input: unknown) {
+  async generateWithAi(user: AuthUserContext, input: unknown) {
     let finalResult: ParticipantTemplateAiGenerateResult | null = null;
-    for await (const event of this.generateWithAiStream(userId, input)) {
+    for await (const event of this.generateWithAiStream(user, input)) {
       if (event.type === "result") {
         finalResult = event.result;
       }
@@ -197,15 +239,18 @@ export class ParticipantTemplateService {
     return finalResult;
   }
 
-  async *generateWithAiStream(userId: string, input: unknown): AsyncGenerator<ParticipantTemplateAiGenerateStreamEvent> {
+  async *generateWithAiStream(user: AuthUserContext, input: unknown): AsyncGenerator<ParticipantTemplateAiGenerateStreamEvent> {
+    await this.usageLimitService.consumeOrThrow(user, "participant template generation");
     const payload = participantTemplateAiGenerateInputSchema.parse(input);
     const config = payload.llmConfigId
-      ? await this.llmService.getRuntimeConfig(userId, payload.llmConfigId)
-      : await this.llmService.getDefaultRuntimeConfig(userId);
+      ? await this.llmService.getRuntimeConfig(user, payload.llmConfigId)
+      : await this.llmService.getDefaultRuntimeConfig(user.id);
 
     const task = buildParticipantTemplateGenerateJsonlTask({
       prompt: payload.prompt,
+      archetypeProfile: payload.archetypeProfile,
       attributes: payload.attributes,
+      randomConfig: payload.randomConfig,
       templateName: payload.templateName,
       templateDescription: payload.templateDescription,
     });
@@ -323,7 +368,9 @@ export class ParticipantTemplateService {
           template: {
             name: templateRecord.name,
             description: templateRecord.description,
+            archetypeProfile: templateRecord.archetypeProfile,
             attributes: normalizeParticipantAttributeDefinitions(templateRecord.attributes),
+            randomConfig: templateRecord.randomConfig,
             sampleSizePreview: templateRecord.sampleSizePreview,
           },
           rules: records
@@ -376,7 +423,9 @@ export class ParticipantTemplateService {
             template: {
               name: templateRecord.name,
               description: templateRecord.description,
+              archetypeProfile: templateRecord.archetypeProfile,
               attributes: normalizeParticipantAttributeDefinitions(templateRecord.attributes),
+              randomConfig: templateRecord.randomConfig,
               sampleSizePreview: templateRecord.sampleSizePreview,
             },
             rules: records

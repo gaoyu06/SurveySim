@@ -8,8 +8,8 @@ export function buildSurveyExtractJsonlTask(input: { rawText: string; title?: st
       {
         role: "system" as const,
         content: [
-          "You are a questionnaire extraction engine for SurveySim.",
-          "Your job is to convert a questionnaire into JSONL records that exactly match the required schema.",
+          "You are a content-task extraction engine for SurveySim.",
+          "Your job is to convert a questionnaire, rating task, or opinion task into JSONL records that exactly match the required schema.",
           "Return JSONL only. Each line must be exactly one JSON object. No prose. No markdown fences.",
           "Do not invent alternate key names. If a key is not in the schema, do not output it.",
           "Before emitting each line, verify the record uses the exact required field names and recordType values.",
@@ -22,8 +22,8 @@ export function buildSurveyExtractJsonlTask(input: { rawText: string; title?: st
           {
             title: "Task",
             lines: [
-              "Extract the questionnaire into ordered JSONL records.",
-              "The first line must be the survey_meta record.",
+              "Extract the content task into ordered JSONL records.",
+              "The first line must be the survey_meta record, including scenarioType when it can be inferred.",
               "Emit a section record whenever the questionnaire enters a new section.",
               "Emit one question record per question or display block.",
               "Keep the source order exactly. Do not merge multiple questions into one record.",
@@ -47,7 +47,7 @@ export function buildSurveyExtractJsonlTask(input: { rawText: string; title?: st
           {
             title: "Canonical Record Shapes",
             lines: [
-              'survey_meta shape => {"recordType":"survey_meta","title":"Survey title","description":"Optional survey description","respondentInstructions":"Optional survey-wide instruction","language":"zh-CN"}',
+              'survey_meta shape => {"recordType":"survey_meta","scenarioType":"survey","title":"Task title","description":"Optional task description","subject":"Optional target object","taskInstructions":"Optional task-wide instructions","respondentInstructions":"Optional participant-wide instruction","language":"zh-CN"}',
               'section shape => {"recordType":"section","id":"section_1","title":"Section title","description":"Optional section description"}',
               'question base shape => {"recordType":"question","id":"q1","type":"single_choice","title":"Question text","options":[]}',
               "Only include optional fields when they are actually needed and valid.",
@@ -99,8 +99,8 @@ export function buildSurveyExtractJsonlTask(input: { rawText: string; title?: st
               "Use single_choice when exactly one answer can be chosen from listed options.",
               "Use multi_choice when multiple answers can be chosen from listed options.",
               "Use single_choice_other or multi_choice_other only when the source explicitly includes an 'other, please specify' style input.",
-              "Use rating when the respondent gives a numeric or scaled score.",
-              "Use open_text when the respondent writes free text.",
+              "Use rating when the participant gives a numeric or scaled score to an object, article, or experience.",
+              "Use open_text when the participant writes an opinion, rationale, or free-text response.",
               "Use paragraph for display-only descriptive content that is not itself a question.",
               "Use respondent_instruction for direct instructions to the respondent such as how to answer the survey.",
               "Use section_title only for visible headings inside the question flow when a standalone section record is not enough.",
@@ -206,7 +206,7 @@ export function buildSurveyExtractJsonlTask(input: { rawText: string; title?: st
             ],
           },
           {
-            title: "Questionnaire Source",
+            title: "Source Material",
             lines: [input.rawText],
           },
         ]),

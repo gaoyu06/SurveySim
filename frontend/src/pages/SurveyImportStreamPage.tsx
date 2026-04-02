@@ -1,10 +1,11 @@
 import { EditOutlined, EyeInvisibleOutlined, EyeOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Drawer, Empty, List, Space, Steps, Tag, Timeline, Typography } from "antd";
-import type { SurveyImportRecordEvent } from "@surveysim/shared";
+import type { SurveyImportRecordEvent, SurveySchemaDto } from "@surveysim/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/api/client";
+import { HelpCallout } from "@/components/Help";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { SurveySchemaEditor } from "@/components/surveys/SurveySchemaEditor";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -102,22 +103,22 @@ export function SurveyImportStreamPage() {
         rawText: draft.rawText,
         schema: draft.schema,
       };
-      return editingSurveyId ? apiClient.put(`/surveys/${editingSurveyId}`, payload) : apiClient.post("/surveys", payload);
+      return editingSurveyId ? apiClient.put(`/content-tasks/${editingSurveyId}`, payload) : apiClient.post("/content-tasks", payload);
     },
     onSuccess: () => {
       message.success(editingSurveyId ? t("surveys.updateSuccess") : t("surveys.saveSuccess"));
       setDrawerOpen(false);
       setDrawerOpenState(false);
       setHasUnsavedDraft(false);
-      void queryClient.invalidateQueries({ queryKey: ["surveys"] });
-      navigate("/surveys");
+      void queryClient.invalidateQueries({ queryKey: ["content-tasks"] });
+      navigate("/content-tasks");
     },
     onError: (error: Error) => message.error(error.message),
   });
 
   const retryRecordMutation = useMutation({
     mutationFn: (record: ProcessedRecord) =>
-      apiClient.post<SurveyImportRecordEvent>("/surveys/import/retry-record", {
+      apiClient.post<SurveyImportRecordEvent>("/content-tasks/import/retry-record", {
         rawText: draft.rawText || importText,
         invalidLine: record.rawLine,
         errorMessage: record.message,
@@ -138,10 +139,19 @@ export function SurveyImportStreamPage() {
         subtitle={t("surveys.streamPageSubtitle")}
         actions={
           <Space>
-            <Button onClick={() => navigate("/surveys/import")}>{t("surveys.importRaw")}</Button>
-            <Button onClick={() => navigate("/surveys")}>{t("common.back")}</Button>
+            <Button onClick={() => navigate("/content-tasks/import")}>{t("surveys.importRaw")}</Button>
+            <Button onClick={() => navigate("/content-tasks")}>{t("common.back")}</Button>
           </Space>
         }
+      />
+      <HelpCallout
+        title={t("surveys.streamGuideTitle")}
+        description={t("surveys.streamGuideDescription")}
+        items={[
+          t("surveys.streamGuideStep1"),
+          t("surveys.streamGuideStep2"),
+          t("surveys.streamGuideStep3"),
+        ]}
       />
 
       {streamLogs.length ? (
@@ -322,7 +332,7 @@ export function SurveyImportStreamPage() {
             />
           </Panel>
         ) : null}
-        <SurveySchemaEditor value={draft.schema} onChange={(schema) => setDraft((current) => ({ ...current, schema }))} />
+        <SurveySchemaEditor value={draft.schema} onChange={(schema: SurveySchemaDto) => setDraft((current) => ({ ...current, schema }))} />
       </Drawer>
     </>
   );

@@ -15,9 +15,17 @@ export const llmProviderConfigInputSchema = z.object({
 
 export const llmProviderConfigSchema = llmProviderConfigInputSchema.extend({
   id: z.string(),
+  ownerId: z.string(),
+  ownerEmail: z.string().email(),
+  isOwnedByCurrentUser: z.boolean().default(true),
+  isPublic: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
   maskedApiKey: z.string(),
+});
+
+export const llmPublicVisibilityInputSchema = z.object({
+  isPublic: z.boolean(),
 });
 
 export const testConnectionInputSchema = z.object({
@@ -30,3 +38,4 @@ export const testConnectionInputSchema = z.object({
 export type LlmProviderConfigInput = z.infer<typeof llmProviderConfigInputSchema>;
 export type LlmProviderConfigDto = z.infer<typeof llmProviderConfigSchema>;
 export type TestConnectionInput = z.infer<typeof testConnectionInputSchema>;
+export type LlmPublicVisibilityInput = z.infer<typeof llmPublicVisibilityInputSchema>;

@@ -9,22 +9,28 @@ import {
   normalizeParticipantAttributeDefinitions,
   normalizeParticipantAttributeKey,
   type LlmProviderConfigDto,
+  type ParticipantArchetypeProfileDto,
   type ParticipantAttributeDefinitionDto,
+  type ParticipantRandomConfigDto,
   type ParticipantRuleInput,
   type ParticipantTemplateAiGenerateResult,
   type ParticipantTemplateAiGenerateStreamEvent,
   type ParticipantTemplateDto,
 } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
+import { FieldLabel, HelpCallout } from "@/components/Help";
 import { RuleBuilderV2 } from "@/components/forms/RuleBuilderV2";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { useI18n } from "@/i18n/I18nProvider";
+import { authStore } from "@/stores/auth.store";
 
 type TemplateDraft = {
   template: {
     name: string;
     description?: string;
+    archetypeProfile?: ParticipantArchetypeProfileDto;
     attributes: ParticipantAttributeDefinitionDto[];
+    randomConfig: ParticipantRandomConfigDto;
     sampleSizePreview: number;
   };
   rules: ParticipantRuleInput[];
@@ -38,9 +44,20 @@ const defaultDraft: TemplateDraft = {
   template: {
     name: "Global consumer baseline",
     description: "Editable synthetic audience with layered rules.",
+    archetypeProfile: {
+      label: "General consumers",
+      description: "Broad synthetic audience for exploratory content tasks.",
+      scenarioContext: "consumer feedback",
+      seedTags: ["consumer", "general_population"],
+      seedPrompt: "A broad consumer population with mild differences in motivation, familiarity, and expression.",
+    },
     attributes: normalizeParticipantAttributeDefinitions([
-      ...visibleBuiltinAttributes.filter((attribute) => ["country", "gender", "ageRange", "interests", "incomeRange"].includes(attribute.key)),
+      ...visibleBuiltinAttributes.filter((attribute) => ["country", "gender", "ageRange", "interests", "incomeRange", "customTags"].includes(attribute.key)),
     ]),
+    randomConfig: {
+      randomnessLevel: "medium",
+      noiseProfile: "balanced",
+    },
     sampleSizePreview: 300,
   },
   rules: [
@@ -87,7 +104,9 @@ function toDraft(template: ParticipantTemplateDto): TemplateDraft {
     template: {
       name: template.name,
       description: template.description,
+      archetypeProfile: template.archetypeProfile,
       attributes: normalizeParticipantAttributeDefinitions(template.attributes),
+      randomConfig: template.randomConfig,
       sampleSizePreview: template.sampleSizePreview,
     },
     rules: template.rules.map((rule) => ({
@@ -134,8 +153,10 @@ export function ParticipantTemplatesPageV2() {
   const queryClient = useQueryClient();
   const { message } = App.useApp();
   const { t } = useI18n();
+  const currentUser = authStore((state) => state.user);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft>(defaultDraft);
+  const [onlyOwnData, setOnlyOwnData] = useState(true);
   const [aiPrompt, setAiPrompt] = useState("");
   const [selectedLlmConfigId, setSelectedLlmConfigId] = useState<string | undefined>();
   const [aiStreamStage, setAiStreamStage] = useState<string>();
@@ -144,8 +165,8 @@ export function ParticipantTemplatesPageV2() {
   const [aiStreamLogs, setAiStreamLogs] = useState<string[]>([]);
 
   const templatesQuery = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => apiClient.get<ParticipantTemplateDto[]>("/participant-templates"),
+    queryKey: ["templates", currentUser?.role, onlyOwnData],
+    queryFn: () => apiClient.get<ParticipantTemplateDto[]>(`/participant-templates${currentUser?.role === "admin" && !onlyOwnData ? "?scope=all" : ""}`),
   });
 
   const llmConfigsQuery = useQuery({
@@ -157,6 +178,7 @@ export function ParticipantTemplatesPageV2() {
     () => templatesQuery.data?.find((item) => item.id === selectedId) ?? null,
     [templatesQuery.data, selectedId],
   );
+  const isReadonlySelection = Boolean(selectedId && selectedTemplate && selectedTemplate.isOwnedByCurrentUser === false);
 
   useEffect(() => {
     if (!selectedTemplate) {
@@ -200,7 +222,9 @@ export function ParticipantTemplatesPageV2() {
       let finalResult: ParticipantTemplateAiGenerateResult | undefined;
       const payload = {
         prompt: aiPrompt,
+        archetypeProfile: draft.template.archetypeProfile,
         attributes: draft.template.attributes,
+        randomConfig: draft.template.randomConfig,
         llmConfigId: selectedLlmConfigId,
         templateName: draft.template.name,
         templateDescription: draft.template.description,
@@ -251,10 +275,7 @@ export function ParticipantTemplatesPageV2() {
   });
 
   const selectedBuiltinKeys = useMemo(
-    () =>
-      draft.template.attributes
-        .filter((attribute) => builtinAttributeKeys.has(attribute.key))
-        .map((attribute) => attribute.key),
+    () => draft.template.attributes.filter((attribute) => builtinAttributeKeys.has(attribute.key)).map((attribute) => attribute.key),
     [draft.template.attributes],
   );
 
@@ -307,10 +328,7 @@ export function ParticipantTemplatesPageV2() {
         rules: current.rules.map((rule) => ({
           ...rule,
           scope: remapScopeAttribute(rule.scope, attributeKey, nextKey),
-          assignment:
-            rule.assignment.attribute === attributeKey
-              ? { ...rule.assignment, attribute: nextKey }
-              : rule.assignment,
+          assignment: rule.assignment.attribute === attributeKey ? { ...rule.assignment, attribute: nextKey } : rule.assignment,
         })),
       }));
     }
@@ -320,9 +338,7 @@ export function ParticipantTemplatesPageV2() {
     updateAttributes((current) => current.filter((attribute) => attribute.key !== attributeKey));
     setDraft((current) => ({
       ...current,
-      rules: current.rules.filter(
-        (rule) => rule.assignment.attribute !== attributeKey && !scopeUsesAttribute(rule.scope, attributeKey),
-      ),
+      rules: current.rules.filter((rule) => rule.assignment.attribute !== attributeKey && !scopeUsesAttribute(rule.scope, attributeKey)),
     }));
   };
 
@@ -339,18 +355,18 @@ export function ParticipantTemplatesPageV2() {
         subtitle={t("templates.subtitle")}
         actions={
           <Space>
-            <Button
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setSelectedId(null);
-                setDraft(defaultDraft);
-              }}
-            >
+            {currentUser?.role === "admin" ? (
+              <Space>
+                <span>{t("common.onlyMine")}</span>
+                <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
+              </Space>
+            ) : null}
+            <Button icon={<PlusOutlined />} onClick={() => { setSelectedId(null); setDraft(defaultDraft); }}>
               {t("templates.new")}
             </Button>
             <Button
               icon={<CopyOutlined />}
-              disabled={!selectedId}
+              disabled={!selectedId || isReadonlySelection}
               onClick={async () => {
                 if (!selectedId) return;
                 await apiClient.post(`/participant-templates/${selectedId}/clone`);
@@ -360,14 +376,19 @@ export function ParticipantTemplatesPageV2() {
             >
               {t("templates.clone")}
             </Button>
-            <Button danger icon={<DeleteOutlined />} disabled={!selectedId} loading={deleteMutation.isPending} onClick={() => selectedId && deleteMutation.mutate(selectedId)}>
+            <Button danger icon={<DeleteOutlined />} disabled={!selectedId || isReadonlySelection} loading={deleteMutation.isPending} onClick={() => selectedId && deleteMutation.mutate(selectedId)}>
               {t("templates.delete")}
             </Button>
-            <Button type="primary" icon={<SaveOutlined />} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+            <Button type="primary" icon={<SaveOutlined />} disabled={isReadonlySelection} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
               {t("templates.save")}
             </Button>
           </Space>
         }
+      />
+      <HelpCallout
+        title={t("templates.guideTitle")}
+        description={t("templates.guideDescription")}
+        items={[t("templates.guideStep1"), t("templates.guideStep2"), t("templates.guideStep3")]}
       />
 
       <div className="workspace-grid" style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}>
@@ -387,7 +408,10 @@ export function ParticipantTemplatesPageV2() {
                 }}
                 onClick={() => setSelectedId(item.id)}
               >
-                <List.Item.Meta title={item.name} description={t("templates.rulesCount", { count: item.rules.length })} />
+                <List.Item.Meta
+                  title={item.name}
+                  description={`${t("templates.rulesCount", { count: item.rules.length })}${item.ownerEmail ? ` · ${t("common.owner")}: ${item.ownerEmail}` : ""}`}
+                />
               </List.Item>
             )}
           />
@@ -396,19 +420,13 @@ export function ParticipantTemplatesPageV2() {
         <div className="card-stack">
           <Panel>
             <Typography.Title level={4}>{t("templates.ruleEditor")}</Typography.Title>
-            <Form layout="vertical">
-              <Form.Item label={t("templates.aiGeneratePrompt")}>
+            <Form layout="vertical" disabled={isReadonlySelection}>
+              <Form.Item label={<FieldLabel label={t("templates.aiGeneratePrompt")} hint={t("templates.aiGeneratePromptHint")} />}>
                 <Input.TextArea rows={4} value={aiPrompt} placeholder={t("templates.aiGeneratePlaceholder")} onChange={(event) => setAiPrompt(event.target.value)} />
               </Form.Item>
               <Space wrap align="start" style={{ width: "100%" }}>
-                <Form.Item label={t("templates.aiGenerateModel")} style={{ minWidth: 260, flex: 1 }}>
-                  <Select
-                    allowClear
-                    placeholder={t("surveys.chooseConfig")}
-                    options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
-                    value={selectedLlmConfigId}
-                    onChange={setSelectedLlmConfigId}
-                  />
+                <Form.Item label={<FieldLabel label={t("templates.aiGenerateModel")} hint={t("templates.aiGenerateModelHint")} />} style={{ minWidth: 260, flex: 1 }}>
+                  <Select allowClear placeholder={t("surveys.chooseConfig")} options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.isOwnedByCurrentUser ? item.name : `${item.name} · ${item.ownerEmail}`, value: item.id }))} value={selectedLlmConfigId} onChange={setSelectedLlmConfigId} />
                 </Form.Item>
                 <Form.Item label=" ">
                   <Button type="primary" loading={generateWithAiMutation.isPending} disabled={!aiPrompt.trim()} onClick={() => generateWithAiMutation.mutate()}>
@@ -442,93 +460,69 @@ export function ParticipantTemplatesPageV2() {
 
           <div className="workspace-grid" style={{ gridTemplateColumns: "minmax(360px, 440px) minmax(0, 1fr)" }}>
             <Panel>
-              <Form layout="vertical">
-                <Form.Item label={t("templates.templateName")}>
+              <Form layout="vertical" disabled={isReadonlySelection}>
+                {isReadonlySelection ? <div className="subtle-help">{t("common.readonlyForeignData")}</div> : null}
+                <Form.Item label={<FieldLabel label={t("templates.templateName")} hint={t("templates.templateNameHint")} />}>
                   <Input value={draft.template.name} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, name: event.target.value } }))} />
                 </Form.Item>
-                <Form.Item label={t("templates.description")}>
+                <Form.Item label={<FieldLabel label={t("templates.description")} hint={t("templates.descriptionHint")} />}>
                   <Input.TextArea rows={2} value={draft.template.description} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, description: event.target.value } }))} />
                 </Form.Item>
-                <Form.Item label={t("templates.previewSampleSize")}>
+                <Form.Item label={<FieldLabel label={t("templates.archetypeLabel")} hint={t("templates.archetypeLabelHint")} />}>
+                  <Input value={draft.template.archetypeProfile?.label} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: event.target.value, seedTags: current.template.archetypeProfile?.seedTags ?? [] } } }))} />
+                </Form.Item>
+                <Form.Item label={<FieldLabel label={t("templates.archetypeDescription")} hint={t("templates.archetypeDescriptionHint")} />}>
+                  <Input.TextArea rows={2} value={draft.template.archetypeProfile?.description} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", description: event.target.value, seedTags: current.template.archetypeProfile?.seedTags ?? [] } } }))} />
+                </Form.Item>
+                <Form.Item label={<FieldLabel label={t("templates.scenarioContext")} hint={t("templates.scenarioContextHint")} />}>
+                  <Input value={draft.template.archetypeProfile?.scenarioContext} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", scenarioContext: event.target.value, seedTags: current.template.archetypeProfile?.seedTags ?? [] } } }))} />
+                </Form.Item>
+                <Form.Item label={<FieldLabel label={t("templates.archetypeTags")} hint={t("templates.archetypeTagsHint")} />}>
+                  <Select mode="tags" tokenSeparators={[","]} value={draft.template.archetypeProfile?.seedTags ?? []} onChange={(values) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", seedTags: values } } }))} />
+                </Form.Item>
+                <Form.Item label={<FieldLabel label={t("templates.archetypePrompt")} hint={t("templates.archetypePromptHint")} />}>
+                  <Input.TextArea rows={3} value={draft.template.archetypeProfile?.seedPrompt} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", seedTags: current.template.archetypeProfile?.seedTags ?? [], seedPrompt: event.target.value } } }))} />
+                </Form.Item>
+                <Form.Item label={<FieldLabel label={t("templates.randomSeed")} hint={t("templates.randomSeedHint")} />}>
+                  <Input value={draft.template.randomConfig.seed} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, randomConfig: { ...current.template.randomConfig, seed: event.target.value || undefined } } }))} />
+                </Form.Item>
+                <Form.Item label={<FieldLabel label={t("templates.randomnessLevel")} hint={t("templates.randomnessLevelHint")} />}>
+                  <Select value={draft.template.randomConfig.randomnessLevel} options={[{ label: "Low", value: "low" }, { label: "Medium", value: "medium" }, { label: "High", value: "high" }]} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, randomConfig: { ...current.template.randomConfig, randomnessLevel: value } } }))} />
+                </Form.Item>
+                <Form.Item label={<FieldLabel label={t("templates.noiseProfile")} hint={t("templates.noiseProfileHint")} />}>
+                  <Select value={draft.template.randomConfig.noiseProfile} options={[{ label: "Conservative", value: "conservative" }, { label: "Balanced", value: "balanced" }, { label: "Expressive", value: "expressive" }]} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, randomConfig: { ...current.template.randomConfig, noiseProfile: value } } }))} />
+                </Form.Item>
+                <Form.Item label={<FieldLabel label={t("templates.previewSampleSize")} hint={t("templates.previewSampleSizeHint")} />}>
                   <InputNumber min={10} max={5000} style={{ width: "100%" }} value={draft.template.sampleSizePreview} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, sampleSizePreview: value ?? 300 } }))} />
                 </Form.Item>
-
-                <Form.Item label={t("templates.trackedDimensions")}>
-                  <Select
-                    mode="multiple"
-                    value={selectedBuiltinKeys}
-                    options={visibleBuiltinAttributes.map((attribute) => ({ label: formatAttributeLabel(attribute), value: attribute.key }))}
-                    onChange={setBuiltinSelection}
-                  />
+                <Form.Item label={<FieldLabel label={t("templates.trackedDimensions")} hint={t("templates.trackedDimensionsHint")} />}>
+                  <Select mode="multiple" value={selectedBuiltinKeys} options={visibleBuiltinAttributes.map((attribute) => ({ label: formatAttributeLabel(attribute), value: attribute.key }))} onChange={setBuiltinSelection} />
                   <div className="subtle-help">{t("templates.dimensionHint")}</div>
                 </Form.Item>
-
                 <Space align="center" style={{ width: "100%", justifyContent: "space-between", marginBottom: 12 }}>
                   <Typography.Text strong>{t("templates.customDimension")}</Typography.Text>
-                  <Button icon={<PlusOutlined />} onClick={addCustomAttribute}>
-                    {t("templates.addDimension")}
-                  </Button>
+                  <Button icon={<PlusOutlined />} onClick={addCustomAttribute}>{t("templates.addDimension")}</Button>
                 </Space>
-
                 <Space direction="vertical" style={{ width: "100%" }} size={10}>
                   {customAttributes.map((attribute, index) => (
                     <div key={attribute.key} className="rule-card">
                       <Space align="start" style={{ width: "100%", justifyContent: "space-between" }}>
                         <div>
-                          <Typography.Text strong>
-                            {attribute.displayName || humanizeParticipantAttributeKey(attribute.key)}
-                          </Typography.Text>
+                          <Typography.Text strong>{attribute.displayName || humanizeParticipantAttributeKey(attribute.key)}</Typography.Text>
                           <div className="subtle-help">{attribute.key}</div>
                         </div>
                         <Button danger type="text" icon={<DeleteOutlined />} onClick={() => removeCustomAttribute(attribute.key)} />
                       </Space>
                       <div className="card-stack" style={{ marginTop: 12 }}>
-                        <Input
-                          addonBefore={t("templates.customAttributeKey")}
-                          value={attribute.key}
-                          placeholder={`custom_attribute_${index + 1}`}
-                          onChange={(event) => updateCustomAttribute(attribute.key, { key: normalizeParticipantAttributeKey(event.target.value) })}
-                        />
-                        <Input
-                          addonBefore={t("templates.customAttributeDisplayName")}
-                          value={attribute.displayName}
-                          placeholder={t("templates.customAttributeDisplayNamePlaceholder")}
-                          onChange={(event) => updateCustomAttribute(attribute.key, { displayName: event.target.value })}
-                        />
-                        <Input
-                          addonBefore={t("templates.customAttributeDescription")}
-                          value={attribute.description}
-                          placeholder={t("templates.customAttributeDescriptionPlaceholder")}
-                          onChange={(event) => updateCustomAttribute(attribute.key, { description: event.target.value })}
-                        />
-                        <Select
-                          value={attribute.valueType}
-                          options={[
-                            { label: t("templates.attributeTypeSingle"), value: "single" },
-                            { label: t("templates.attributeTypeMulti"), value: "multi" },
-                          ]}
-                          onChange={(value) => updateCustomAttribute(attribute.key, { valueType: value })}
-                        />
-                        <Select
-                          mode="tags"
-                          tokenSeparators={[","]}
-                          value={attribute.presetValues.map((item) => item.value)}
-                          placeholder={t("templates.presetValuesPlaceholder")}
-                          onChange={(values) =>
-                            updateCustomAttribute(attribute.key, {
-                              presetValues: values.map((value) => ({
-                                value: normalizeParticipantAttributeKey(value),
-                                label: humanizeParticipantAttributeKey(value),
-                              })),
-                            })
-                          }
-                        />
+                        <Input addonBefore={t("templates.customAttributeKey")} value={attribute.key} placeholder={`custom_attribute_${index + 1}`} onChange={(event) => updateCustomAttribute(attribute.key, { key: normalizeParticipantAttributeKey(event.target.value) })} />
+                        <Input addonBefore={t("templates.customAttributeDisplayName")} value={attribute.displayName} placeholder={t("templates.customAttributeDisplayNamePlaceholder")} onChange={(event) => updateCustomAttribute(attribute.key, { displayName: event.target.value })} />
+                        <Input addonBefore={t("templates.customAttributeDescription")} value={attribute.description} placeholder={t("templates.customAttributeDescriptionPlaceholder")} onChange={(event) => updateCustomAttribute(attribute.key, { description: event.target.value })} />
+                        <Select value={attribute.valueType} options={[{ label: t("templates.attributeTypeSingle"), value: "single" }, { label: t("templates.attributeTypeMulti"), value: "multi" }]} onChange={(value) => updateCustomAttribute(attribute.key, { valueType: value })} />
+                        <Select mode="tags" tokenSeparators={[","]} value={attribute.presetValues.map((item) => item.value)} placeholder={t("templates.presetValuesPlaceholder")} onChange={(values) => updateCustomAttribute(attribute.key, { presetValues: values.map((value) => ({ value: normalizeParticipantAttributeKey(value), label: humanizeParticipantAttributeKey(value) })) })} />
                       </div>
                     </div>
                   ))}
-                  {!customAttributes.length ? (
-                    <div className="subtle-help">{t("templates.customAttributeEmpty")}</div>
-                  ) : null}
+                  {!customAttributes.length ? <div className="subtle-help">{t("templates.customAttributeEmpty")}</div> : null}
                 </Space>
               </Form>
             </Panel>
@@ -540,10 +534,14 @@ export function ParticipantTemplatesPageV2() {
                     {formatAttributeLabel(attribute)}
                   </Tag>
                 ))}
+                {draft.template.archetypeProfile?.label ? <Tag color="gold">{draft.template.archetypeProfile.label}</Tag> : null}
+                <Tag>{`random:${draft.template.randomConfig.randomnessLevel}`}</Tag>
+                <Tag>{`noise:${draft.template.randomConfig.noiseProfile}`}</Tag>
               </Space>
               <RuleBuilderV2
                 value={draft.rules}
                 attributes={draft.template.attributes}
+                disabled={isReadonlySelection}
                 onChange={(rules) => setDraft((current) => ({ ...current, rules }))}
               />
             </Panel>

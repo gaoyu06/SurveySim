@@ -8,6 +8,7 @@ import {
 } from "@surveysim/shared";
 import { Button, Form, Input, InputNumber, Select, Space, Switch, Typography } from "antd";
 import { useMemo } from "react";
+import { FieldLabel } from "@/components/Help";
 import { useI18n } from "@/i18n/I18nProvider";
 
 const operatorOptions = [
@@ -122,10 +123,12 @@ export function RuleBuilderV2({
   value,
   onChange,
   attributes,
+  disabled = false,
 }: {
   value: ParticipantRuleInput[];
   onChange: (next: ParticipantRuleInput[]) => void;
   attributes?: ParticipantAttributeDefinitionDto[];
+  disabled?: boolean;
 }) {
   const { t } = useI18n();
 
@@ -265,22 +268,23 @@ export function RuleBuilderV2({
                   {formatAttributeLabel(targetAttribute)} · {t("ruleBuilder.priority")}: {normalizedRule.priority}
                 </Typography.Text>
               </div>
-              <Button danger icon={<DeleteOutlined />} onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))} />
+              <Button danger disabled={disabled} icon={<DeleteOutlined />} onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))} />
             </Space>
 
             <Form layout="vertical" style={{ marginTop: 16 }}>
-              <Form.Item label={t("ruleBuilder.ruleName")}>
-                <Input value={normalizedRule.name} onChange={(event) => updateRule(index, { name: event.target.value })} />
+              <Form.Item label={<FieldLabel label={t("ruleBuilder.ruleName")} hint={t("ruleBuilder.ruleNameHint")} />}>
+                <Input disabled={disabled} value={normalizedRule.name} onChange={(event) => updateRule(index, { name: event.target.value })} />
               </Form.Item>
               <Space style={{ width: "100%" }} align="start" wrap>
                 <Form.Item label={t("ruleBuilder.enabled")}>
-                  <Switch checked={normalizedRule.enabled} onChange={(checked) => updateRule(index, { enabled: checked })} />
+                  <Switch disabled={disabled} checked={normalizedRule.enabled} onChange={(checked) => updateRule(index, { enabled: checked })} />
                 </Form.Item>
-                <Form.Item label={t("ruleBuilder.priority")}>
-                  <InputNumber min={0} max={1000} value={normalizedRule.priority} onChange={(nextValue) => updateRule(index, { priority: nextValue ?? 0 })} />
+                <Form.Item label={<FieldLabel label={t("ruleBuilder.priority")} hint={t("ruleBuilder.priorityHint")} />}>
+                  <InputNumber disabled={disabled} min={0} max={1000} value={normalizedRule.priority} onChange={(nextValue) => updateRule(index, { priority: nextValue ?? 0 })} />
                 </Form.Item>
-                <Form.Item label={t("ruleBuilder.targetAttribute")}>
+                <Form.Item label={<FieldLabel label={t("ruleBuilder.targetAttribute")} hint={t("ruleBuilder.targetAttributeHint")} />}>
                   <Select
+                    disabled={disabled}
                     value={normalizedRule.assignment.attribute}
                     style={{ width: 220 }}
                     options={resolvedAttributes.map((attribute) => ({ label: formatAttributeLabel(attribute), value: attribute.key }))}
@@ -303,8 +307,9 @@ export function RuleBuilderV2({
                     }}
                   />
                 </Form.Item>
-                <Form.Item label={t("ruleBuilder.assignmentMode")}>
+                <Form.Item label={<FieldLabel label={t("ruleBuilder.assignmentMode")} hint={t("ruleBuilder.assignmentModeHint")} />}>
                   <Select
+                    disabled={disabled}
                     value={normalizedRule.assignment.mode}
                     style={{ width: 180 }}
                     options={[
@@ -336,7 +341,7 @@ export function RuleBuilderV2({
               <Space direction="vertical" style={{ width: "100%" }} size={10}>
                 <Space align="center" style={{ justifyContent: "space-between", width: "100%" }} wrap>
                   <div>
-                    <Typography.Text strong>{t("ruleBuilder.scopeCombinator")}</Typography.Text>
+                    <FieldLabel label={<Typography.Text strong>{t("ruleBuilder.scopeCombinator")}</Typography.Text>} hint={t("ruleBuilder.scopeCombinatorHint")} />
                     <div className="subtle-help">
                       {scope.children.length ? t("ruleBuilder.scopeHint") : t("ruleBuilder.appliesToAll")}
                     </div>
@@ -345,6 +350,7 @@ export function RuleBuilderV2({
                     {scope.children.length ? (
                       <>
                         <Select
+                          disabled={disabled}
                           value={scope.combinator}
                           style={{ width: 160 }}
                           options={[
@@ -353,10 +359,10 @@ export function RuleBuilderV2({
                           ]}
                           onChange={(combinator) => updateRule(index, { scope: { ...scope, combinator, children: scope.children } })}
                         />
-                        <Button onClick={() => clearConditions(index)}>{t("ruleBuilder.clearConditions")}</Button>
+                        <Button disabled={disabled} onClick={() => clearConditions(index)}>{t("ruleBuilder.clearConditions")}</Button>
                       </>
                     ) : null}
-                    <Button icon={<PlusOutlined />} onClick={() => addCondition(index)}>
+                    <Button disabled={disabled} icon={<PlusOutlined />} onClick={() => addCondition(index)}>
                       {t("ruleBuilder.addCondition")}
                     </Button>
                   </Space>
@@ -371,6 +377,7 @@ export function RuleBuilderV2({
                   return (
                     <div key={conditionIndex} className="condition-row">
                       <Select
+                        disabled={disabled}
                         value={leaf.field}
                         options={resolvedAttributes.map((attribute) => ({ label: formatAttributeLabel(attribute), value: attribute.key }))}
                         onChange={(field) => {
@@ -384,6 +391,7 @@ export function RuleBuilderV2({
                         }}
                       />
                       <Select
+                        disabled={disabled}
                         value={leaf.operator}
                         options={operatorOptions.map((option) => ({ label: option.label, value: option.value }))}
                         onChange={(operator) =>
@@ -395,6 +403,7 @@ export function RuleBuilderV2({
                       />
                       {presetOptions.length ? (
                         <Select
+                          disabled={disabled}
                           mode={multipleConditionValue ? "multiple" : undefined}
                           value={normalizeAttributeValue(leaf.value, conditionAttribute, multipleConditionValue)}
                           options={presetOptions}
@@ -407,6 +416,7 @@ export function RuleBuilderV2({
                         />
                       ) : (
                         <Input
+                          disabled={disabled}
                           value={stringifyValue(normalizeConditionValue(leaf.value, leaf.operator))}
                           placeholder={t("ruleBuilder.valueInput")}
                           onChange={(event) =>
@@ -418,6 +428,7 @@ export function RuleBuilderV2({
                       )}
                       <Button
                         danger
+                        disabled={disabled}
                         type="text"
                         icon={<DeleteOutlined />}
                         onClick={() => removeCondition(index, conditionIndex)}
@@ -429,9 +440,10 @@ export function RuleBuilderV2({
               </Space>
 
               {normalizedRule.assignment.mode === "fixed" ? (
-                <Form.Item label={t("ruleBuilder.fixedValue")} style={{ marginTop: 12 }}>
+                <Form.Item label={<FieldLabel label={t("ruleBuilder.fixedValue")} hint={t("ruleBuilder.fixedValueHint")} />} style={{ marginTop: 12 }}>
                   {targetAttribute.presetValues.length ? (
                     <Select
+                      disabled={disabled}
                       mode={targetAttribute.valueType === "multi" ? "multiple" : undefined}
                       value={normalizeAttributeValue(normalizedRule.assignment.fixedValue, targetAttribute)}
                       options={targetAttribute.presetValues.map((preset) => ({ label: preset.label, value: preset.value }))}
@@ -447,6 +459,7 @@ export function RuleBuilderV2({
                     />
                   ) : (
                     <Input
+                      disabled={disabled}
                       value={stringifyValue(normalizedRule.assignment.fixedValue)}
                       placeholder={t("ruleBuilder.fixedValue")}
                       onChange={(event) =>
@@ -461,12 +474,13 @@ export function RuleBuilderV2({
                   )}
                 </Form.Item>
               ) : (
-                <Form.Item label={t("ruleBuilder.distribution")} style={{ marginTop: 12 }}>
+                <Form.Item label={<FieldLabel label={t("ruleBuilder.distribution")} hint={t("ruleBuilder.distributionHint")} />} style={{ marginTop: 12 }}>
                   <Space direction="vertical" style={{ width: "100%" }} size={10}>
                     {(normalizedRule.assignment.distribution ?? []).map((item, itemIndex) => (
                       <div key={`${normalizedRule.assignment.attribute}_${itemIndex}`} className="condition-row">
                         {targetAttribute.presetValues.length ? (
                           <Select
+                            disabled={disabled}
                             mode={targetAttribute.valueType === "multi" ? "multiple" : undefined}
                             value={normalizeAttributeValue(item.value, targetAttribute)}
                             options={targetAttribute.presetValues.map((preset) => ({ label: preset.label, value: preset.value }))}
@@ -487,6 +501,7 @@ export function RuleBuilderV2({
                           />
                         ) : (
                           <Input
+                            disabled={disabled}
                             value={stringifyValue(item.value)}
                             placeholder={t("ruleBuilder.distributionValue")}
                             onChange={(event) =>
@@ -497,6 +512,7 @@ export function RuleBuilderV2({
                           />
                         )}
                         <InputNumber
+                          disabled={disabled}
                           min={0}
                           max={100}
                           value={item.percentage}
@@ -505,15 +521,16 @@ export function RuleBuilderV2({
                           onChange={(percentage) => updateDistributionItem(index, itemIndex, { percentage: percentage ?? 0 })}
                         />
                         <Input
+                          disabled={disabled}
                           value={item.label}
                           placeholder={t("ruleBuilder.distributionLabel")}
                           onChange={(event) => updateDistributionItem(index, itemIndex, { label: event.target.value || undefined })}
                         />
-                        <Button danger type="text" icon={<DeleteOutlined />} onClick={() => removeDistributionItem(index, itemIndex)} />
+                        <Button danger disabled={disabled} type="text" icon={<DeleteOutlined />} onClick={() => removeDistributionItem(index, itemIndex)} />
                       </div>
                     ))}
                     <div className="subtle-help">{t("ruleBuilder.distributionHint")}</div>
-                    <Button icon={<PlusOutlined />} onClick={() => addDistributionItem(index)}>
+                    <Button disabled={disabled} icon={<PlusOutlined />} onClick={() => addDistributionItem(index)}>
                       {t("ruleBuilder.addDistributionItem")}
                     </Button>
                   </Space>
@@ -527,6 +544,7 @@ export function RuleBuilderV2({
       <Button
         type="dashed"
         block
+        disabled={disabled}
         icon={<PlusOutlined />}
         onClick={() =>
           onChange([

@@ -1,13 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { loginInputSchema, registerInputSchema, type AuthResponse } from "@surveysim/shared";
+import { UserRole } from "@prisma/client";
 import { userRepository } from "../repositories/user.repository.js";
 import { hashPassword, verifyPassword } from "../utils/crypto.js";
 import { toIsoString } from "../utils/serialize.js";
 
-function mapUser(user: { id: string; email: string; createdAt: Date; updatedAt: Date }) {
+function mapUser(user: { id: string; email: string; role: UserRole; createdAt: Date; updatedAt: Date }) {
   return {
     id: user.id,
     email: user.email,
+    role: user.role.toLowerCase() as "admin" | "user",
     createdAt: toIsoString(user.createdAt)!,
     updatedAt: toIsoString(user.updatedAt)!,
   };
@@ -24,13 +26,16 @@ export class AuthService {
     }
 
     const passwordHash = await hashPassword(payload.password);
-    const user = await userRepository.create(payload.email, passwordHash);
+    const userCount = await userRepository.count();
+    const role = userCount === 0 ? UserRole.ADMIN : UserRole.USER;
+    const user = await userRepository.create(payload.email, passwordHash, role);
     const token = await this.app.jwt.sign({ id: user.id, email: user.email });
 
     return { token, user: mapUser(user) };
   }
 
   async login(input: unknown): Promise<AuthResponse> {
+    await userRepository.ensureAdminExists();
     const payload = loginInputSchema.parse(input);
     const user = await userRepository.findByEmail(payload.email);
     if (!user) {
@@ -47,6 +52,7 @@ export class AuthService {
   }
 
   async me(userId: string) {
+    await userRepository.ensureAdminExists();
     const user = await userRepository.findById(userId);
     if (!user) {
       throw new Error("User not found");

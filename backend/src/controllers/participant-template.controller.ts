@@ -3,12 +3,12 @@ import { ParticipantTemplateService } from "../services/participant-template.ser
 
 export function participantTemplateControllerFactory(service: ParticipantTemplateService) {
   return {
-    list: async (request: FastifyRequest, reply: FastifyReply) => {
-      reply.send(await service.list(request.authUser!.id));
+    list: async (request: FastifyRequest<{ Querystring: { scope?: string } }>, reply: FastifyReply) => {
+      reply.send(await service.list(request.authUser!, request.query.scope));
     },
     get: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {
-        reply.send(await service.get(request.authUser!.id, request.params.id));
+        reply.send(await service.get(request.authUser!, request.params.id));
       } catch (error) {
         reply.code(404).send({ message: error instanceof Error ? error.message : String(error) });
       }
@@ -42,7 +42,7 @@ export function participantTemplateControllerFactory(service: ParticipantTemplat
     },
     generateWithAi: async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        reply.send(await service.generateWithAi(request.authUser!.id, request.body));
+        reply.send(await service.generateWithAi(request.authUser!, request.body));
       } catch (error) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }
@@ -57,7 +57,7 @@ export function participantTemplateControllerFactory(service: ParticipantTemplat
         });
         reply.raw.write(": connected\n\n");
 
-        for await (const event of service.generateWithAiStream(request.authUser!.id, request.body)) {
+        for await (const event of service.generateWithAiStream(request.authUser!, request.body)) {
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
         }
 

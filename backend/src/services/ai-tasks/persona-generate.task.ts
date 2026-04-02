@@ -11,13 +11,13 @@ export const personaGenerationResultSchema = z.object({
 
 export function buildPersonaGenerateTask(input: {
   identity: unknown;
-  surveyTitle: string;
+  contentTaskTitle: string;
   extraRespondentPrompt?: string;
 }) {
   const payload = personaGenerationPayloadSchema.parse({
     identity: input.identity,
-    survey: {
-      survey: { title: input.surveyTitle, language: "auto" },
+    contentTask: {
+      survey: { title: input.contentTaskTitle, language: "auto", scenarioType: "survey" },
       sections: [{ id: "meta", title: "meta", displayOrder: 0, questions: [] }],
     },
     extraPrompt: input.extraRespondentPrompt,
@@ -28,7 +28,7 @@ export function buildPersonaGenerateTask(input: {
       {
         role: "system" as const,
         content:
-          "You generate vivid but bounded survey respondent personas. Keep the persona consistent with the identity while adding realistic variation, subtle inconsistency, life details, and speaking style. Return JSON only.",
+          "You generate vivid but bounded task participant personas. Keep the persona consistent with the identity while adding realistic variation, subtle inconsistency, life details, and speaking style. Return JSON only.",
       },
       {
         role: "user" as const,
@@ -36,12 +36,12 @@ export function buildPersonaGenerateTask(input: {
           {
             title: "Task",
             lines: [
-              "Create a realistic respondent persona prompt for later survey answering.",
+              "Create a realistic participant persona prompt for later content-task completion.",
               "The persona must remain consistent with the provided identity.",
-              "Add background details unrelated to the questionnaire when useful.",
+              "Add background details unrelated to the task content when useful.",
               "Avoid turning the persona into a generic list of labels.",
               "Reflect hidden response tendencies such as fatigue, confidence, central-tendency bias, extremity bias, and willingness to skip optional questions when they are mild but realistic.",
-              "Do not systematically make the respondent decisive, polished, or extreme unless the identity noise clearly supports that.",
+              "Do not systematically make the participant decisive, polished, or extreme unless the identity noise clearly supports that.",
             ],
           },
           {

@@ -4,14 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Drawer, Form, Input, InputNumber, Space, Switch, Table, Tag } from "antd";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import {
-  llmProviderConfigInputSchema,
-  type LlmProviderConfigDto,
-  type LlmProviderConfigInput,
-} from "@surveysim/shared";
+import { llmProviderConfigInputSchema, type LlmProviderConfigDto, type LlmProviderConfigInput } from "@surveysim/shared";
 import { ApiError, apiClient } from "@/api/client";
 import { useI18n } from "@/i18n/I18nProvider";
 import { PageHeader, Panel } from "@/components/PageHeader";
+import { authStore } from "@/stores/auth.store";
 
 const defaultValues: LlmProviderConfigInput = {
   name: "Jucode GPT-5.4",
@@ -28,13 +25,15 @@ const defaultValues: LlmProviderConfigInput = {
 
 export function LlmConfigsPage() {
   const { t } = useI18n();
+  const currentUser = authStore((state) => state.user);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<LlmProviderConfigDto | null>(null);
+  const [onlyOwnData, setOnlyOwnData] = useState(true);
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: ["llm-configs"],
-    queryFn: () => apiClient.get<LlmProviderConfigDto[]>("/llm-configs"),
+    queryKey: ["llm-configs", currentUser?.role, onlyOwnData],
+    queryFn: () => apiClient.get<LlmProviderConfigDto[]>(`/llm-configs${currentUser?.role === "admin" && !onlyOwnData ? "?scope=all" : ""}`),
   });
 
   const form = useForm<LlmProviderConfigInput>({
@@ -61,6 +60,16 @@ export function LlmConfigsPage() {
     mutationFn: (values: LlmProviderConfigInput) =>
       apiClient.post<{ ok: boolean }>("/llm-configs/test", values),
     onSuccess: (result) => message.success(result.ok ? t("llm.connectionSucceeded") : t("llm.connectionFailed")),
+    onError: (error: Error) => message.error(error.message),
+  });
+
+  const publicMutation = useMutation({
+    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
+      apiClient.post<LlmProviderConfigDto>(`/llm-configs/${id}/public`, { isPublic }),
+    onSuccess: () => {
+      message.success(t("llm.visibilityUpdated"));
+      queryClient.invalidateQueries({ queryKey: ["llm-configs"] });
+    },
     onError: (error: Error) => message.error(error.message),
   });
 
@@ -119,17 +128,25 @@ export function LlmConfigsPage() {
         title={t("llm.title")}
         subtitle={t("llm.subtitle")}
         actions={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setEditing(null);
-              form.reset(defaultValues);
-              setOpen(true);
-            }}
-          >
-            {t("llm.newConfig")}
-          </Button>
+          <Space>
+            {currentUser?.role === "admin" ? (
+              <Space>
+                <span>{t("common.onlyMine")}</span>
+                <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
+              </Space>
+            ) : null}
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditing(null);
+                form.reset(defaultValues);
+                setOpen(true);
+              }}
+            >
+              {t("llm.newConfig")}
+            </Button>
+          </Space>
         }
       />
       <Panel>
@@ -140,19 +157,27 @@ export function LlmConfigsPage() {
           pagination={false}
           columns={[
             { title: t("llm.name"), dataIndex: "name" },
+            { title: t("common.owner"), dataIndex: "ownerEmail" },
             { title: t("llm.baseUrl"), dataIndex: "baseUrl", ellipsis: true },
             { title: t("llm.model"), dataIndex: "model" },
             { title: t("llm.concurrency"), dataIndex: "concurrency" },
             { title: t("llm.apiKey"), dataIndex: "maskedApiKey" },
             {
               title: t("llm.state"),
-              render: (_, item) => (item.isDefault ? <Tag color="blue">{t("llm.defaultTag")}</Tag> : <Tag>{t("llm.savedTag")}</Tag>),
+              render: (_, item) => (
+                <Space wrap>
+                  {item.isDefault ? <Tag color="blue">{t("llm.defaultTag")}</Tag> : <Tag>{t("llm.savedTag")}</Tag>}
+                  {item.isPublic ? <Tag color="gold">{t("llm.publicTag")}</Tag> : null}
+                  {!item.isOwnedByCurrentUser ? <Tag>{t("llm.readOnlyTag")}</Tag> : null}
+                </Space>
+              ),
             },
             {
               title: t("common.actions"),
               render: (_, item) => (
                 <Space>
                   <Button
+                    disabled={!item.isOwnedByCurrentUser}
                     onClick={() => {
                       setEditing(item);
                       form.reset({ ...item, apiKey: item.apiKey });
@@ -163,11 +188,17 @@ export function LlmConfigsPage() {
                   </Button>
                   <Button
                     icon={<CheckCircleOutlined />}
+                    disabled={!item.isOwnedByCurrentUser}
                     onClick={() => handleDefault(item.id)}
                   >
                     {t("common.default")}
                   </Button>
-                  <Button danger onClick={() => handleDelete(item.id)}>
+                  {currentUser?.role === "admin" ? (
+                    <Button loading={publicMutation.isPending && publicMutation.variables?.id === item.id} onClick={() => publicMutation.mutate({ id: item.id, isPublic: !item.isPublic })}>
+                      {item.isPublic ? t("llm.makePrivate") : t("llm.makePublic")}
+                    </Button>
+                  ) : null}
+                  <Button danger disabled={!item.isOwnedByCurrentUser} onClick={() => handleDelete(item.id)}>
                     {t("common.delete")}
                   </Button>
                 </Space>

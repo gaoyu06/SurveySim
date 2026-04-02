@@ -1,12 +1,14 @@
 import { DownloadOutlined } from "@ant-design/icons";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { App, Button, Empty, Form, Input, Progress, Select, Space, Table, Tag, Typography } from "antd";
+import { App, Button, Empty, Form, Input, Progress, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import type { MockRunDto, ReportComparisonDto, ReportDto } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
+import { FieldLabel, HelpCallout } from "@/components/Help";
 import { SimpleChart } from "@/components/charts/SimpleChart";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { useI18n } from "@/i18n/I18nProvider";
+import { authStore } from "@/stores/auth.store";
 
 const attributeOptions = ["country", "gender", "ageRange", "incomeRange", "interests", "educationLevel", "occupation", "maritalStatus"];
 
@@ -468,15 +470,17 @@ function renderCompareOpenText(runs: ComparisonRun[], questionId: string | undef
 export function ReportsPage() {
   const { message } = App.useApp();
   const { t } = useI18n();
+  const currentUser = authStore((state) => state.user);
   const [runId, setRunId] = useState<string>();
   const [compareRunIds, setCompareRunIds] = useState<string[]>([]);
   const [filterAttribute, setFilterAttribute] = useState<string>();
   const [filterValue, setFilterValue] = useState("");
   const [selectedCompareQuestionId, setSelectedCompareQuestionId] = useState<string>();
+  const [onlyOwnData, setOnlyOwnData] = useState(true);
 
   const runsQuery = useQuery({
-    queryKey: ["mock-runs"],
-    queryFn: () => apiClient.get<MockRunDto[]>("/mock-runs"),
+    queryKey: ["mock-runs", "reports", currentUser?.role, onlyOwnData],
+    queryFn: () => apiClient.get<MockRunDto[]>(`/mock-runs${currentUser?.role === "admin" && !onlyOwnData ? "?scope=all" : ""}`),
   });
 
   const reportMutation = useMutation({
@@ -526,23 +530,36 @@ export function ReportsPage() {
       <PageHeader
         title={t("reports.title")}
         subtitle={t("reports.subtitle")}
+        actions={
+          currentUser?.role === "admin" ? (
+            <Space>
+              <span>{t("common.onlyMine")}</span>
+              <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
+            </Space>
+          ) : undefined
+        }
+      />
+      <HelpCallout
+        title={t("reports.guideTitle")}
+        description={t("reports.guideDescription")}
+        items={[t("reports.guideStep1"), t("reports.guideStep2"), t("reports.guideStep3")]}
       />
       <div className="workspace-grid">
         <Panel>
           <Typography.Title level={4}>{t("reports.singleRun")}</Typography.Title>
           <Form layout="vertical">
-            <Form.Item label={t("reports.run")}>
+            <Form.Item label={<FieldLabel label={t("reports.run")} hint={t("reports.runHint")} />}>
               <Select
                 placeholder={t("reports.chooseRun")}
-                options={(runsQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
+                options={(runsQuery.data ?? []).map((item) => ({ label: item.ownerEmail ? `${item.name} · ${item.ownerEmail}` : item.name, value: item.id }))}
                 value={runId}
                 onChange={setRunId}
               />
             </Form.Item>
-            <Form.Item label={t("reports.filterAttribute")}>
+            <Form.Item label={<FieldLabel label={t("reports.filterAttribute")} hint={t("reports.filterAttributeHint")} />}>
               <Select allowClear placeholder={t("reports.filterAttributePlaceholder")} options={attributeOptions.map((value) => ({ label: t(`attributes.${value}`), value }))} value={filterAttribute} onChange={setFilterAttribute} />
             </Form.Item>
-            <Form.Item label={t("reports.filterValue")}>
+            <Form.Item label={<FieldLabel label={t("reports.filterValue")} hint={t("reports.filterValueHint")} />}>
               <Input placeholder={t("reports.filterHint")} value={filterValue} onChange={(event) => setFilterValue(event.target.value)} />
             </Form.Item>
             <Space wrap>
@@ -555,6 +572,9 @@ export function ReportsPage() {
               <Button icon={<DownloadOutlined />} disabled={!runId} onClick={() => runId && download(`/exports/${runId}/open-text-csv`, `${runId}-open-text.csv`)}>
                 {t("reports.exportOpenTextCsv")}
               </Button>
+              <Button icon={<DownloadOutlined />} disabled={!runId} onClick={() => runId && download(`/exports/${runId}/raw-csv`, `${runId}-raw-responses.csv`)}>
+                {t("reports.exportRawResponseCsv")}
+              </Button>
               <Button icon={<DownloadOutlined />} disabled={!runId} onClick={() => runId && download(`/exports/${runId}/json`, `${runId}.json`)}>
                 {t("reports.exportJson")}
               </Button>
@@ -562,21 +582,23 @@ export function ReportsPage() {
                 {t("reports.exportHtml")}
               </Button>
             </Space>
+            <div className="subtle-help">{t("reports.exportHint")}</div>
           </Form>
         </Panel>
 
         <Panel>
           <Typography.Title level={4}>{t("reports.multiRun")}</Typography.Title>
           <Form layout="vertical">
-            <Form.Item label={t("reports.compareRuns")}>
+            <Form.Item label={<FieldLabel label={t("reports.compareRuns")} hint={t("reports.compareRunsHint")} />}>
               <Select
                 mode="multiple"
                 placeholder={t("reports.compareHint")}
-                options={(runsQuery.data ?? []).map((item) => ({ label: item.name, value: item.id }))}
+                options={(runsQuery.data ?? []).map((item) => ({ label: item.ownerEmail ? `${item.name} · ${item.ownerEmail}` : item.name, value: item.id }))}
                 value={compareRunIds}
                 onChange={setCompareRunIds}
               />
             </Form.Item>
+            <div className="subtle-help">{t("reports.compareFilterSharedHint")}</div>
             <Button type="primary" disabled={compareRunIds.length < 2} loading={compareMutation.isPending} onClick={() => compareMutation.mutate()}>
               {t("reports.compareRuns")}
             </Button>

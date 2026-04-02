@@ -9,5 +9,6 @@ export async function llmRoutes(app: FastifyInstance) {
   app.put("/:id", { preHandler: [app.authenticate] }, controller.update as any);
   app.delete("/:id", { preHandler: [app.authenticate] }, controller.delete as any);
   app.post("/:id/default", { preHandler: [app.authenticate] }, controller.setDefault as any);
+  app.post("/:id/public", { preHandler: [app.authenticate] }, controller.setPublic as any);
   app.post("/test", { preHandler: [app.authenticate] }, controller.testConnection as any);
 }

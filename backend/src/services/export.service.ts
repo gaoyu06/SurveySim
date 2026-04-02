@@ -1,10 +1,29 @@
 import path from "node:path";
 import { stringify } from "csv-stringify/sync";
-import type { ReportDto } from "@surveysim/shared";
+import type { ParticipantIdentity, ReportDto, StructuredAnswer, SurveySchemaDto } from "@surveysim/shared";
 import { prisma } from "../lib/db.js";
 import { env } from "../config/env.js";
+import { fromJson } from "../lib/json.js";
+import type { AuthUserContext } from "../types/auth.js";
+import { isAdmin } from "../utils/access.js";
 import { ensureDir, writeTextFile } from "../utils/fs.js";
 import { ReportService } from "./reporting/report.service.js";
+import { readStructuredAnswers } from "./survey-response-answer-reader.js";
+
+type RawExportParticipant = {
+  participantId: string;
+  participantOrdinal: number;
+  participantStatus: string;
+  responseStatus: string;
+  responseCompletedAt: Date | null;
+  identity: ParticipantIdentity;
+  answers: StructuredAnswer[];
+};
+
+type FlattenedQuestion = {
+  order: number;
+  question: SurveySchemaDto["sections"][number]["questions"][number];
+};
 
 type ExportContext = {
   run: {
@@ -16,6 +35,8 @@ type ExportContext = {
     startedAt: Date | null;
     completedAt: Date | null;
   };
+  surveySchema: SurveySchemaDto;
+  participants: RawExportParticipant[];
   report: ReportDto;
 };
 
@@ -53,6 +74,13 @@ type OpenTextCsvExportRow = {
   answerIndex: number | "";
   answerText: string;
 };
+
+type DynamicCsvColumn = {
+  key: string;
+  header: string;
+};
+
+type RawResponseCsvRow = Record<string, string | number>;
 
 function escapeHtml(value: string) {
   return value
@@ -112,6 +140,48 @@ const OPEN_TEXT_CSV_COLUMNS = [
   { key: "answerText", header: "回答内容" },
 ] as const;
 
+const RAW_RESPONSE_BASE_COLUMNS: DynamicCsvColumn[] = [
+  { key: "runName", header: "批次名称" },
+  { key: "surveyTitle", header: "问卷标题" },
+  { key: "participantOrdinal", header: "参与者序号" },
+  { key: "participantId", header: "参与者 ID" },
+  { key: "participantStatus", header: "参与者状态" },
+  { key: "responseStatus", header: "答卷状态" },
+  { key: "responseCompletedAt", header: "答卷完成时间" },
+];
+
+const IDENTITY_HEADER_LABELS: Record<string, string> = {
+  region: "地区",
+  country: "国家",
+  continent: "洲",
+  gender: "性别",
+  ageRange: "年龄段",
+  educationLevel: "教育程度",
+  occupation: "职业",
+  incomeRange: "收入范围",
+  interests: "兴趣",
+  maritalStatus: "婚姻状态",
+  customTags: "自定义标签",
+  noise: "噪声参数",
+  extra: "扩展信息",
+};
+
+const PREFERRED_IDENTITY_KEYS = [
+  "region",
+  "country",
+  "continent",
+  "gender",
+  "ageRange",
+  "educationLevel",
+  "occupation",
+  "incomeRange",
+  "interests",
+  "maritalStatus",
+  "customTags",
+  "noise",
+  "extra",
+] as const;
+
 function formatQuestionType(type: string) {
   const labels: Record<string, string> = {
     single_choice: "单选题",
@@ -123,6 +193,204 @@ function formatQuestionType(type: string) {
     open_text: "开放题",
   };
   return labels[type] ?? type;
+}
+
+function isInteractiveQuestion(type: string) {
+  return !["paragraph", "section_title", "respondent_instruction"].includes(type);
+}
+
+function flattenSurveyQuestions(schema: SurveySchemaDto): FlattenedQuestion[] {
+  const items: FlattenedQuestion[] = [];
+  let order = 0;
+
+  for (const section of schema.sections) {
+    for (const question of section.questions) {
+      if (!isInteractiveQuestion(question.type)) {
+        continue;
+      }
+
+      order += 1;
+      items.push({ order, question });
+    }
+  }
+
+  return items;
+}
+
+function formatIdentityHeader(key: string) {
+  return IDENTITY_HEADER_LABELS[key] ?? key;
+}
+
+function formatIdentityValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return EMPTY_CELL;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).join(" | ");
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
+
+function collectIdentityKeys(participants: RawExportParticipant[]) {
+  const allKeys = new Set<string>();
+
+  for (const participant of participants) {
+    for (const key of Object.keys(participant.identity)) {
+      allKeys.add(key);
+    }
+  }
+
+  const preferred = PREFERRED_IDENTITY_KEYS.filter((key) => allKeys.has(key));
+  const additional = [...allKeys]
+    .filter((key) => !PREFERRED_IDENTITY_KEYS.includes(key as (typeof PREFERRED_IDENTITY_KEYS)[number]))
+    .sort((left, right) => left.localeCompare(right));
+
+  return [...preferred, ...additional];
+}
+
+function getSkippedMarker(answer?: StructuredAnswer) {
+  if (!answer?.isSkipped) {
+    return null;
+  }
+
+  return answer.skipReason ? `SKIPPED:${answer.skipReason}` : "SKIPPED";
+}
+
+function formatOptionSelection(
+  optionIds: string[],
+  options: Array<{ id: string; label: string }>,
+  otherText?: string,
+) {
+  const optionMap = new Map(options.map((option) => [option.id, option.label]));
+  const labels = optionIds.map((optionId) => optionMap.get(optionId) ?? optionId);
+
+  if (otherText) {
+    labels.push(`Other: ${otherText}`);
+  }
+
+  return labels.join(" | ");
+}
+
+function formatQuestionAnswer(
+  question: FlattenedQuestion["question"],
+  answer: StructuredAnswer | undefined,
+) {
+  const skipped = getSkippedMarker(answer);
+  if (skipped) {
+    return skipped;
+  }
+
+  if (!answer) {
+    return EMPTY_CELL;
+  }
+
+  if (question.type === "single_choice" || question.type === "single_choice_other") {
+    return formatOptionSelection(answer.selectedOptionIds, question.options, answer.otherText);
+  }
+
+  if (question.type === "multi_choice" || question.type === "multi_choice_other") {
+    return formatOptionSelection(answer.selectedOptionIds, question.options, answer.otherText);
+  }
+
+  if (question.type === "rating") {
+    return answer.ratingValue !== undefined ? String(answer.ratingValue) : EMPTY_CELL;
+  }
+
+  if (question.type === "open_text") {
+    return answer.textAnswer ?? answer.otherText ?? EMPTY_CELL;
+  }
+
+  return EMPTY_CELL;
+}
+
+function formatMatrixRowAnswer(
+  question: FlattenedQuestion["question"],
+  rowId: string,
+  answer: StructuredAnswer | undefined,
+) {
+  const skipped = getSkippedMarker(answer);
+  if (skipped) {
+    return skipped;
+  }
+
+  if (!answer || question.type !== "matrix_single_choice") {
+    return EMPTY_CELL;
+  }
+
+  const rowAnswer = answer.matrixAnswers.find((item) => item.rowId === rowId);
+  if (!rowAnswer) {
+    return EMPTY_CELL;
+  }
+
+  const columns = question.matrix?.columns ?? [];
+  return formatOptionSelection(rowAnswer.selectedOptionIds, columns);
+}
+
+function buildRawResponseCsv(context: ExportContext) {
+  const identityKeys = collectIdentityKeys(context.participants);
+  const flattenedQuestions = flattenSurveyQuestions(context.surveySchema);
+
+  const identityColumns: DynamicCsvColumn[] = identityKeys.map((key) => ({
+    key: `identity__${key}`,
+    header: formatIdentityHeader(key),
+  }));
+
+  const questionColumns: DynamicCsvColumn[] = flattenedQuestions.flatMap(({ order, question }) => {
+    if (question.type === "matrix_single_choice") {
+      return (question.matrix?.rows ?? []).map((row, rowIndex) => ({
+        key: `question__${question.id}__${row.id}`,
+        header: `Q${order}.${rowIndex + 1} ${question.title} / ${row.label}`,
+      }));
+    }
+
+    return [
+      {
+        key: `question__${question.id}`,
+        header: `Q${order} ${question.title}`,
+      },
+    ];
+  });
+
+  const columns = [...RAW_RESPONSE_BASE_COLUMNS, ...identityColumns, ...questionColumns];
+  const rows: RawResponseCsvRow[] = context.participants.map((participant) => {
+    const row: RawResponseCsvRow = {
+      runName: context.run.name,
+      surveyTitle: context.run.surveyTitle,
+      participantOrdinal: participant.participantOrdinal,
+      participantId: participant.participantId,
+      participantStatus: participant.participantStatus,
+      responseStatus: participant.responseStatus,
+      responseCompletedAt: participant.responseCompletedAt?.toISOString() ?? EMPTY_CELL,
+    };
+
+    for (const key of identityKeys) {
+      row[`identity__${key}`] = formatIdentityValue((participant.identity as Record<string, unknown>)[key]);
+    }
+
+    const answerMap = new Map(participant.answers.map((answer) => [answer.questionId, answer]));
+
+    for (const { question } of flattenedQuestions) {
+      const answer = answerMap.get(question.id);
+      if (question.type === "matrix_single_choice") {
+        for (const matrixRow of question.matrix?.rows ?? []) {
+          row[`question__${question.id}__${matrixRow.id}`] = formatMatrixRowAnswer(question, matrixRow.id, answer);
+        }
+        continue;
+      }
+
+      row[`question__${question.id}`] = formatQuestionAnswer(question, answer);
+    }
+
+    return row;
+  });
+
+  return { columns, rows };
 }
 
 function buildSanitizedJson(context: ExportContext) {
@@ -857,16 +1125,16 @@ function buildPrintableHtml(context: ExportContext) {
 export class ExportService {
   private readonly reportService = new ReportService();
 
-  async exportJson(userId: string, runId: string) {
-    const context = await this.loadContext(userId, runId);
+  async exportJson(user: AuthUserContext, runId: string) {
+    const context = await this.loadContext(user, runId);
     const payload = buildSanitizedJson(context);
     const filePath = path.resolve(env.STORAGE_DIR, "exports", `${runId}.json`);
     await writeTextFile(filePath, JSON.stringify(payload, null, 2));
     return { filePath, payload };
   }
 
-  async exportCsv(userId: string, runId: string) {
-    const context = await this.loadContext(userId, runId);
+  async exportCsv(user: AuthUserContext, runId: string) {
+    const context = await this.loadContext(user, runId);
     const rows = buildCsvRows(context);
     const csv = stringify(rows, { header: true, columns: CSV_COLUMNS as any });
     const filePath = path.resolve(env.STORAGE_DIR, "exports", `${runId}.csv`);
@@ -874,8 +1142,8 @@ export class ExportService {
     return { filePath, csv };
   }
 
-  async exportOpenTextCsv(userId: string, runId: string) {
-    const context = await this.loadContext(userId, runId);
+  async exportOpenTextCsv(user: AuthUserContext, runId: string) {
+    const context = await this.loadContext(user, runId);
     const rows = buildOpenTextCsvRows(context);
     const csv = stringify(rows, { header: true, columns: OPEN_TEXT_CSV_COLUMNS as any });
     const filePath = path.resolve(env.STORAGE_DIR, "exports", `${runId}-open-text.csv`);
@@ -883,8 +1151,17 @@ export class ExportService {
     return { filePath, csv };
   }
 
-  async exportHtml(userId: string, runId: string) {
-    const context = await this.loadContext(userId, runId);
+  async exportRawResponseCsv(user: AuthUserContext, runId: string) {
+    const context = await this.loadContext(user, runId);
+    const { rows, columns } = buildRawResponseCsv(context);
+    const csv = stringify(rows, { header: true, columns: columns as any });
+    const filePath = path.resolve(env.STORAGE_DIR, "exports", `${runId}-raw-responses.csv`);
+    await writeTextFile(filePath, csv);
+    return { filePath, csv };
+  }
+
+  async exportHtml(user: AuthUserContext, runId: string) {
+    const context = await this.loadContext(user, runId);
     const html = buildPrintableHtml(context);
     const filePath = path.resolve(env.STORAGE_DIR, "reports", `${runId}.html`);
     await ensureDir(path.dirname(filePath));
@@ -892,17 +1169,32 @@ export class ExportService {
     return { filePath, html };
   }
 
-  private async loadContext(userId: string, runId: string): Promise<ExportContext> {
+  private async loadContext(user: AuthUserContext, runId: string): Promise<ExportContext> {
     const run = await prisma.mockRun.findFirst({
-      where: { id: runId, userId },
-      include: { survey: true },
+      where: isAdmin(user) ? { id: runId } : { id: runId, userId: user.id },
+      include: {
+        survey: true,
+        participantInstances: {
+          include: {
+            surveyResponse: {
+              include: {
+                answers: true,
+              },
+            },
+          },
+          orderBy: {
+            ordinal: "asc",
+          },
+        },
+      },
     });
 
     if (!run) {
       throw new Error("Mock run not found");
     }
 
-    const report = await this.reportService.getReport(userId, runId, {});
+    const surveySchema = fromJson<SurveySchemaDto>(run.survey.schema);
+    const report = await this.reportService.getReport(user, runId, {});
 
     return {
       run: {
@@ -914,6 +1206,16 @@ export class ExportService {
         startedAt: run.startedAt,
         completedAt: run.completedAt,
       },
+      surveySchema,
+      participants: run.participantInstances.map((participant) => ({
+        participantId: participant.id,
+        participantOrdinal: participant.ordinal,
+        participantStatus: participant.status,
+        responseStatus: participant.surveyResponse?.status ?? EMPTY_CELL,
+        responseCompletedAt: participant.surveyResponse?.completedAt ?? null,
+        identity: fromJson<ParticipantIdentity>(participant.identity),
+        answers: readStructuredAnswers(participant.surveyResponse),
+      })),
       report,
     };
   }

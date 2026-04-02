@@ -34,8 +34,11 @@ const initialDraft: SurveyDraft = {
   rawText: "",
   schema: {
     survey: {
-      title: "Untitled Survey",
+      scenarioType: "survey",
+      title: "Untitled Content Task",
       respondentInstructions: "",
+      taskInstructions: "",
+      subject: "",
       language: "auto",
     },
     sections: [
@@ -230,7 +233,7 @@ export const surveyImportStore = create<SurveyImportState>()(
         set({ isStreaming: true });
 
         try {
-          await apiClient.streamSurveyImport("/surveys/import/stream", body, (event) => get().applyStreamEvent(event));
+          await apiClient.streamSurveyImport("/content-tasks/import/stream", body, (event) => get().applyStreamEvent(event));
         } catch (error) {
           const resolved = error instanceof Error ? error.message : String(error);
           if (!get().streamLogs.some((item) => item.text === resolved)) {
@@ -243,7 +246,7 @@ export const surveyImportStore = create<SurveyImportState>()(
       },
       retryRecord: async (record) => {
         const state = get();
-        const event = await apiClient.post<SurveyImportRecordEvent>("/surveys/import/retry-record", {
+        const event = await apiClient.post<SurveyImportRecordEvent>("/content-tasks/import/retry-record", {
           rawText: state.draft.rawText || state.importText,
           invalidLine: record.rawLine,
           errorMessage: record.message,
@@ -255,7 +258,7 @@ export const surveyImportStore = create<SurveyImportState>()(
       },
     }),
     {
-      name: "surveysim-survey-import",
+      name: "surveysim-content-task-import",
       partialize: (state) => ({
         importText: state.importText,
         selectedLlmConfigId: state.selectedLlmConfigId,

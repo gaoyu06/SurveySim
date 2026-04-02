@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const contentScenarioTypeSchema = z.enum(["survey", "rating_task", "opinion_task"]);
+
 export const questionTypeSchema = z.enum([
   "single_choice",
   "multi_choice",
@@ -66,7 +68,7 @@ export const surveyQuestionSchema = z.object({
 });
 
 export const surveySectionSchema = z.object({
-  id: z.string(),
+  id: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
   displayOrder: z.number().int(),
@@ -75,8 +77,11 @@ export const surveySectionSchema = z.object({
 
 export const surveySchema = z.object({
   survey: z.object({
+    scenarioType: contentScenarioTypeSchema.default("survey"),
     title: z.string().min(1),
     description: z.string().optional(),
+    subject: z.string().optional(),
+    taskInstructions: z.string().optional(),
     respondentInstructions: z.string().optional(),
     language: z.string().default("auto"),
   }),
@@ -98,8 +103,11 @@ export const surveyDraftSchema = z.object({
 export const surveyImportJsonlRecordSchema = z.discriminatedUnion("recordType", [
   z.object({
     recordType: z.literal("survey_meta"),
+    scenarioType: contentScenarioTypeSchema.optional(),
     title: z.string().min(1),
     description: z.string().optional(),
+    subject: z.string().optional(),
+    taskInstructions: z.string().optional(),
     respondentInstructions: z.string().optional(),
     language: z.string().optional(),
   }),
@@ -197,6 +205,15 @@ export const surveySaveInputSchema = z.object({
   schema: surveySchema,
 });
 
+export const contentTaskSchema = surveySchema;
+export const contentTaskImportInputSchema = surveyImportInputSchema;
+export const contentTaskDraftSchema = surveyDraftSchema;
+export const contentTaskImportJsonlRecordSchema = surveyImportJsonlRecordSchema;
+export const contentTaskImportRecordEventSchema = surveyImportRecordEventSchema;
+export const contentTaskImportStreamEventSchema = surveyImportStreamEventSchema;
+export const contentTaskImportRetryRecordInputSchema = surveyImportRetryRecordInputSchema;
+export const contentTaskSaveInputSchema = surveySaveInputSchema;
+
 export type SurveySchemaDto = z.infer<typeof surveySchema>;
 export type SurveyQuestionDto = z.infer<typeof surveyQuestionSchema>;
 export type SurveyDraft = z.infer<typeof surveyDraftSchema>;
@@ -204,3 +221,12 @@ export type SurveySaveInput = z.infer<typeof surveySaveInputSchema>;
 export type SurveyImportStreamEvent = z.infer<typeof surveyImportStreamEventSchema>;
 export type SurveyImportJsonlRecord = z.infer<typeof surveyImportJsonlRecordSchema>;
 export type SurveyImportRecordEvent = z.infer<typeof surveyImportRecordEventSchema>;
+
+export type ContentScenarioType = z.infer<typeof contentScenarioTypeSchema>;
+export type ContentTaskSchemaDto = SurveySchemaDto;
+export type ContentTaskQuestionDto = SurveyQuestionDto;
+export type ContentTaskDraft = SurveyDraft;
+export type ContentTaskSaveInput = SurveySaveInput;
+export type ContentTaskImportStreamEvent = SurveyImportStreamEvent;
+export type ContentTaskImportJsonlRecord = SurveyImportJsonlRecord;
+export type ContentTaskImportRecordEvent = SurveyImportRecordEvent;

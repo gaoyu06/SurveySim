@@ -1,6 +1,6 @@
 import { DeleteOutlined, ExclamationCircleOutlined, EyeOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Empty, List, Space, Typography } from "antd";
+import { App, Button, Drawer, Empty, List, Space, Switch, Typography } from "antd";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SurveySchemaDto } from "@surveysim/shared";
@@ -8,6 +8,7 @@ import { apiClient } from "@/api/client";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { SurveySchemaEditor } from "@/components/surveys/SurveySchemaEditor";
 import { useI18n } from "@/i18n/I18nProvider";
+import { authStore } from "@/stores/auth.store";
 import { surveyImportStore } from "@/stores/survey-import.store";
 
 type SurveyRecord = {
@@ -16,6 +17,9 @@ type SurveyRecord = {
   description?: string;
   rawText: string;
   schema: SurveySchemaDto;
+  ownerId?: string;
+  ownerEmail?: string;
+  isOwnedByCurrentUser?: boolean;
   createdAt: string;
 };
 
@@ -24,7 +28,9 @@ export function SurveysListPage() {
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
   const { t } = useI18n();
+  const currentUser = authStore((state) => state.user);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [onlyOwnData, setOnlyOwnData] = useState(true);
 
   const draft = surveyImportStore((state) => state.draft);
   const editingSurveyId = surveyImportStore((state) => state.editingSurveyId);
@@ -35,8 +41,8 @@ export function SurveysListPage() {
   const resetDraft = surveyImportStore((state) => state.resetDraft);
 
   const surveysQuery = useQuery({
-    queryKey: ["surveys"],
-    queryFn: () => apiClient.get<SurveyRecord[]>("/surveys"),
+    queryKey: ["content-tasks", currentUser?.role, onlyOwnData],
+    queryFn: () => apiClient.get<SurveyRecord[]>(`/content-tasks${currentUser?.role === "admin" && !onlyOwnData ? "?scope=all" : ""}`),
   });
 
   const saveMutation = useMutation({
@@ -47,22 +53,22 @@ export function SurveysListPage() {
         rawText: draft.rawText,
         schema: draft.schema,
       };
-      return editingSurveyId ? apiClient.put(`/surveys/${editingSurveyId}`, payload) : apiClient.post("/surveys", payload);
+      return editingSurveyId ? apiClient.put(`/content-tasks/${editingSurveyId}`, payload) : apiClient.post("/content-tasks", payload);
     },
     onSuccess: () => {
       message.success(editingSurveyId ? t("surveys.updateSuccess") : t("surveys.saveSuccess"));
       setDrawerOpen(false);
       setHasUnsavedDraft(false);
-      void queryClient.invalidateQueries({ queryKey: ["surveys"] });
+      void queryClient.invalidateQueries({ queryKey: ["content-tasks"] });
     },
     onError: (error: Error) => message.error(error.message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/surveys/${id}`),
+    mutationFn: (id: string) => apiClient.delete(`/content-tasks/${id}`),
     onSuccess: async (_, id) => {
       message.success(t("surveys.deleteSuccess"));
-      await queryClient.invalidateQueries({ queryKey: ["surveys"] });
+      await queryClient.invalidateQueries({ queryKey: ["content-tasks"] });
       queryClient.removeQueries({ queryKey: ["survey", id] });
     },
     onError: (error: Error) => message.error(error.message),
@@ -88,9 +94,17 @@ export function SurveysListPage() {
         title={t("surveys.title")}
         subtitle={t("surveys.listSubtitle")}
         actions={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/surveys/import")}>
-            {t("surveys.importAction")}
-          </Button>
+          <Space>
+            {currentUser?.role === "admin" ? (
+              <Space>
+                <span>{t("common.onlyMine")}</span>
+                <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
+              </Space>
+            ) : null}
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/content-tasks/import")}>
+              {t("surveys.importAction")}
+            </Button>
+          </Space>
         }
       />
 
@@ -109,7 +123,7 @@ export function SurveysListPage() {
               </Typography.Paragraph>
             </div>
             <Space wrap>
-              <Button onClick={() => navigate("/surveys/import/stream")}>{t("surveys.reopenDraft")}</Button>
+              <Button onClick={() => navigate("/content-tasks/import/stream")}>{t("surveys.reopenDraft")}</Button>
               <Button
                 onClick={() => {
                   resetDraft();
@@ -131,11 +145,12 @@ export function SurveysListPage() {
           renderItem={(item) => (
             <List.Item
               actions={[
-                <Button key="preview" icon={<EyeOutlined />} onClick={() => navigate(`/surveys/${item.id}/preview`)}>
+                <Button key="preview" icon={<EyeOutlined />} onClick={() => navigate(`/content-tasks/${item.id}/preview`)}>
                   {t("common.preview")}
                 </Button>,
                 <Button
                   key="edit"
+                  disabled={item.isOwnedByCurrentUser === false}
                   onClick={() => {
                     setEditingSurveyId(item.id);
                     setHasUnsavedDraft(false);
@@ -149,12 +164,15 @@ export function SurveysListPage() {
                 >
                   {t("common.edit")}
                 </Button>,
-                <Button key="delete" danger icon={<DeleteOutlined />} onClick={() => confirmDelete(item)}>
+                <Button key="delete" danger disabled={item.isOwnedByCurrentUser === false} icon={<DeleteOutlined />} onClick={() => confirmDelete(item)}>
                   {t("common.delete")}
                 </Button>,
               ]}
             >
-              <List.Item.Meta title={item.title} description={t("surveys.sectionsCount", { count: item.schema.sections.length })} />
+              <List.Item.Meta
+                title={item.title}
+                description={`${t("surveys.sectionsCount", { count: item.schema.sections.length })}${item.ownerEmail ? ` · ${t("common.owner")}: ${item.ownerEmail}` : ""}`}
+              />
             </List.Item>
           )}
         />
@@ -173,7 +191,7 @@ export function SurveysListPage() {
           </Space>
         }
       >
-        <SurveySchemaEditor value={draft.schema} onChange={(schema) => setDraft((current) => ({ ...current, schema }))} />
+        <SurveySchemaEditor value={draft.schema} onChange={(schema: SurveySchemaDto) => setDraft((current) => ({ ...current, schema }))} />
       </Drawer>
     </>
   );

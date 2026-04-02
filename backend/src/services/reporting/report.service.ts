@@ -10,6 +10,8 @@ import {
 } from "@surveysim/shared";
 import { prisma } from "../../lib/db.js";
 import { fromJson, toJson } from "../../lib/json.js";
+import type { AuthUserContext } from "../../types/auth.js";
+import { isAdmin } from "../../utils/access.js";
 import { readStructuredAnswers } from "../survey-response-answer-reader.js";
 
 type LoadedRun = Awaited<ReturnType<ReportService["loadRun"]>>;
@@ -105,9 +107,9 @@ function buildDiagnostics(
 }
 
 export class ReportService {
-  async getReport(userId: string, runId: string, input: unknown): Promise<ReportDto> {
+  async getReport(user: AuthUserContext, runId: string, input: unknown): Promise<ReportDto> {
     const filters = reportFilterSchema.parse(input ?? {});
-    const run = await this.loadRun(userId, runId);
+    const run = await this.loadRun(user, runId);
     const report = await this.buildReport(run, filters);
 
     await prisma.aggregatedReport.upsert({
@@ -119,9 +121,9 @@ export class ReportService {
     return report;
   }
 
-  async compareRuns(userId: string, input: unknown): Promise<ReportComparisonDto> {
+  async compareRuns(user: AuthUserContext, input: unknown): Promise<ReportComparisonDto> {
     const payload = reportComparisonInputSchema.parse(input);
-    const runs = await Promise.all(payload.runIds.map((runId) => this.loadRun(userId, runId)));
+    const runs = await Promise.all(payload.runIds.map((runId) => this.loadRun(user, runId)));
 
     const surveyIds = new Set(runs.map((run) => run.surveyId));
     if (surveyIds.size > 1) {
@@ -154,9 +156,9 @@ export class ReportService {
     };
   }
 
-  private async loadRun(userId: string, runId: string) {
+  private async loadRun(user: AuthUserContext, runId: string) {
     const run = await prisma.mockRun.findFirst({
-      where: { id: runId, userId },
+      where: isAdmin(user) ? { id: runId } : { id: runId, userId: user.id },
       include: {
         survey: true,
         participantInstances: {

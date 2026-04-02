@@ -65,7 +65,7 @@ function buildBehaviorAnchors(identity: Record<string, unknown>) {
 }
 
 export function buildSurveyResponseJsonlTask(input: {
-  survey: unknown;
+  contentTask: unknown;
   identity: unknown;
   personaPrompt: string;
   respondentInstructions?: string;
@@ -73,14 +73,14 @@ export function buildSurveyResponseJsonlTask(input: {
   extraRespondentPrompt?: string;
 }) {
   const payload = responseGenerationPayloadSchema.parse({
-    survey: input.survey,
+    contentTask: input.contentTask,
     identity: input.identity,
     personaPrompt: input.personaPrompt,
     extraSystemPrompt: input.extraSystemPrompt,
     extraRespondentPrompt: input.extraRespondentPrompt,
   });
 
-  const questions = getInteractiveSurveyQuestions(payload.survey);
+  const questions = getInteractiveSurveyQuestions(payload.contentTask);
   const questionIds = questions.map((question) => question.id);
   const examples = renderStructuredAnswerExamples(questions);
   const behaviorAnchors = buildBehaviorAnchors(payload.identity as Record<string, unknown>);
@@ -90,7 +90,7 @@ export function buildSurveyResponseJsonlTask(input: {
       {
         role: "system" as const,
         content: [
-          "You simulate one survey respondent for SurveySim.",
+          "You simulate one participant completing a content task for SurveySim.",
           "Return answer records as JSONL only.",
           "Each line must be exactly one StructuredAnswer JSON object.",
           "No markdown. No prose. No wrapper object. No arrays.",
@@ -110,11 +110,11 @@ export function buildSurveyResponseJsonlTask(input: {
           {
             title: "Task",
             lines: [
-              "Fill the survey as the provided respondent persona.",
+              "Complete the content task as the provided participant persona.",
               `Emit exactly ${questionIds.length} JSON lines, one answer per interactive question, and nothing else.`,
               "Required questions must receive valid answers. Optional questions may be skipped when that fits the respondent's fatigue, uncertainty, or relevance.",
               "Stream line-by-line in order. After finishing question 1, emit its JSON object immediately, then continue to question 2.",
-              "Stay faithful to the persona and identity while remaining valid under the survey schema.",
+              "Stay faithful to the persona and identity while remaining valid under the content-task schema.",
               "Answer as a subjective consumer or respondent, not as a translator, analyst, teacher, or evaluator trying to find the objectively correct option.",
             ],
           },
@@ -155,7 +155,7 @@ export function buildSurveyResponseJsonlTask(input: {
               "Avoid over-optimizing for the most polished, strongest, or most professional-sounding option. People often pick the option that simply feels familiar or easy to understand.",
               "Two respondents with similar identities should still differ sometimes because of taste, wording sensitivity, mood, and personal bias.",
               "Use middle ratings when the respondent is uncertain, fatigued, or only mildly opinionated. Use endpoints only when the respondent truly feels strongly.",
-              input.respondentInstructions ? `Survey-wide respondent instructions: ${input.respondentInstructions}` : undefined,
+              input.respondentInstructions ? `Task-wide participant instructions: ${input.respondentInstructions}` : undefined,
             ],
           },
           {

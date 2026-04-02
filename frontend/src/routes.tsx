@@ -16,6 +16,8 @@ import { SurveyPreviewPage } from "@/pages/SurveyPreviewPage";
 import { MockRunsPage } from "@/pages/MockRunsPage";
 import { MockRunDetailPage } from "@/pages/MockRunDetailPage";
 import { ReportsPage } from "@/pages/ReportsPage";
+import { SystemSettingsPage } from "@/pages/SystemSettingsPage";
+import { UserManagementPage } from "@/pages/UserManagementPage";
 import { useI18n } from "@/i18n/I18nProvider";
 
 function ProtectedLayout() {
@@ -64,13 +66,15 @@ export function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="llm-configs" element={<LlmConfigsPage />} />
         <Route path="templates" element={<ParticipantTemplatesPageV2 />} />
-        <Route path="surveys" element={<SurveysListPage />} />
-        <Route path="surveys/import" element={<SurveysImportPage />} />
-        <Route path="surveys/import/stream" element={<SurveyImportStreamPage />} />
-        <Route path="surveys/:id/preview" element={<SurveyPreviewPage />} />
+        <Route path="content-tasks" element={<SurveysListPage />} />
+        <Route path="content-tasks/import" element={<SurveysImportPage />} />
+        <Route path="content-tasks/import/stream" element={<SurveyImportStreamPage />} />
+        <Route path="content-tasks/:id/preview" element={<SurveyPreviewPage />} />
         <Route path="mock-runs" element={<MockRunsPage />} />
         <Route path="mock-runs/:id" element={<MockRunDetailPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="admin/users" element={<UserManagementPage />} />
+        <Route path="admin/settings" element={<SystemSettingsPage />} />
       </Route>
       <Route path="*" element={<Result status="404" title="404" subTitle={t("routes.notFound")} />} />
     </Routes>

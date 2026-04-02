@@ -67,7 +67,8 @@ export function createEmptySurveyDraft(rawText: string, fallbackTitle?: string):
     extractionNotes: [],
     schema: {
       survey: {
-        title: fallbackTitle ?? "Imported Survey",
+        scenarioType: "survey",
+        title: fallbackTitle ?? "Imported Content Task",
         language: "auto",
       },
       sections: [],
@@ -80,8 +81,11 @@ export function applySurveyImportRecordToDraft(draft: SurveyDraft, record: Surve
 
   if (record.recordType === "survey_meta") {
     nextDraft.schema.survey = {
+      scenarioType: record.scenarioType ?? nextDraft.schema.survey.scenarioType ?? "survey",
       title: record.title,
       description: record.description,
+      subject: record.subject,
+      taskInstructions: record.taskInstructions,
       respondentInstructions: record.respondentInstructions,
       language: record.language ?? nextDraft.schema.survey.language ?? "auto",
     };
@@ -127,7 +131,7 @@ export function applySurveyImportRecordToDraft(draft: SurveyDraft, record: Surve
 
 export function ensureSurveySchemaIds(schema: SurveySchemaDto): SurveySchemaDto {
   return {
-    survey: { ...schema.survey },
+    survey: { ...schema.survey, scenarioType: schema.survey.scenarioType ?? "survey" },
     sections: schema.sections.map((section, sectionIndex) => ({
       ...section,
       id: withUniqueId(`section_${sectionIndex + 1}`, section.id),
@@ -135,32 +139,32 @@ export function ensureSurveySchemaIds(schema: SurveySchemaDto): SurveySchemaDto 
       questions: section.questions.map((question, questionIndex) => {
         const questionId = withUniqueId(`question_${sectionIndex + 1}_${questionIndex + 1}`, question.id);
         return {
-        ...question,
-        id: questionId,
-        displayOrder: question.displayOrder ?? questionIndex,
-        options: question.options.map((option, optionIndex) => ({
-          ...option,
-          id: withUniqueId(`${questionId}_option_${optionIndex + 1}`, option.id),
-          displayOrder: option.displayOrder ?? optionIndex,
-          value: option.value || option.label,
-        })),
-        matrix: question.matrix
-          ? {
-              selectionMode: question.matrix.selectionMode ?? "single_per_row",
-              rows: question.matrix.rows.map((row, rowIndex) => ({
-                ...row,
-                id: withUniqueId(`${questionId}_row_${rowIndex + 1}`, row.id),
-                displayOrder: row.displayOrder ?? rowIndex,
-              })),
-              columns: question.matrix.columns.map((column, columnIndex) => ({
-                ...column,
-                id: withUniqueId(`${questionId}_column_${columnIndex + 1}`, column.id),
-                displayOrder: column.displayOrder ?? columnIndex,
-                value: column.value || column.label,
-              })),
-            }
-          : undefined,
-      };
+          ...question,
+          id: questionId,
+          displayOrder: question.displayOrder ?? questionIndex,
+          options: question.options.map((option, optionIndex) => ({
+            ...option,
+            id: withUniqueId(`${questionId}_option_${optionIndex + 1}`, option.id),
+            displayOrder: option.displayOrder ?? optionIndex,
+            value: option.value || option.label,
+          })),
+          matrix: question.matrix
+            ? {
+                selectionMode: question.matrix.selectionMode ?? "single_per_row",
+                rows: question.matrix.rows.map((row, rowIndex) => ({
+                  ...row,
+                  id: withUniqueId(`${questionId}_row_${rowIndex + 1}`, row.id),
+                  displayOrder: row.displayOrder ?? rowIndex,
+                })),
+                columns: question.matrix.columns.map((column, columnIndex) => ({
+                  ...column,
+                  id: withUniqueId(`${questionId}_column_${columnIndex + 1}`, column.id),
+                  displayOrder: column.displayOrder ?? columnIndex,
+                  value: column.value || column.label,
+                })),
+              }
+            : undefined,
+        };
       }),
     })),
   };
@@ -179,7 +183,7 @@ export function finalizeSurveyDraft(draft: SurveyDraft, fallbackTitle?: string):
   }
 
   if (!nextDraft.schema.survey.title?.trim()) {
-    nextDraft.schema.survey.title = fallbackTitle ?? "Imported Survey";
+    nextDraft.schema.survey.title = fallbackTitle ?? "Imported Content Task";
   }
 
   return {
@@ -188,3 +192,8 @@ export function finalizeSurveyDraft(draft: SurveyDraft, fallbackTitle?: string):
     schema: ensureSurveySchemaIds(surveySchema.parse(nextDraft.schema)),
   };
 }
+
+export const createEmptyContentTaskDraft = createEmptySurveyDraft;
+export const applyContentTaskImportRecordToDraft = applySurveyImportRecordToDraft;
+export const ensureContentTaskSchemaIds = ensureSurveySchemaIds;
+export const finalizeContentTaskDraft = finalizeSurveyDraft;
