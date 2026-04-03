@@ -8,7 +8,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
         <h1 className="page-title">{title}</h1>
         {subtitle ? <div className="page-subtitle">{subtitle}</div> : null}
       </div>
-      {actions ? <Space>{actions}</Space> : null}
+      {actions ? <Space wrap className="page-header-actions">{actions}</Space> : null}
     </div>
   );
 }

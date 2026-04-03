@@ -1,6 +1,6 @@
 import { CopyOutlined, DeleteOutlined, EyeOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Empty, Form, Input, InputNumber, List, Select, Space, Switch, Tag, Typography } from "antd";
+import { App, Button, Drawer, Empty, Form, Grid, Input, InputNumber, List, Select, Space, Switch, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import {
   type ConditionExpression,
@@ -153,6 +153,7 @@ export function ParticipantTemplatesPageV2() {
   const queryClient = useQueryClient();
   const { message } = App.useApp();
   const { t } = useI18n();
+  const screens = Grid.useBreakpoint();
   const currentUser = authStore((state) => state.user);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -389,9 +390,9 @@ export function ParticipantTemplatesPageV2() {
         title={t("templates.title")}
         subtitle={t("templates.subtitle")}
         actions={
-          <Space>
+          <Space wrap>
             {currentUser?.role === "admin" ? (
-              <Space>
+              <Space wrap>
                 <span>{t("common.onlyMine")}</span>
                 <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
               </Space>
@@ -415,25 +416,28 @@ export function ParticipantTemplatesPageV2() {
           dataSource={templatesQuery.data ?? []}
           renderItem={(item) => (
             <List.Item
+              className="responsive-list-item"
               actions={[
-                <Button key="open" icon={item.isOwnedByCurrentUser ? undefined : <EyeOutlined />} onClick={() => openTemplateDrawer(item.id)}>
-                  {item.isOwnedByCurrentUser ? t("common.edit") : t("common.preview")}
-                </Button>,
-                <Button
-                  key="clone"
-                  icon={<CopyOutlined />}
-                  disabled={!item.isOwnedByCurrentUser}
-                  onClick={async () => {
-                    await apiClient.post(`/participant-templates/${item.id}/clone`);
-                    message.success(t("templates.templateCloned"));
-                    void queryClient.invalidateQueries({ queryKey: ["templates"] });
-                  }}
-                >
-                  {t("templates.clone")}
-                </Button>,
-                <Button key="delete" danger icon={<DeleteOutlined />} disabled={!item.isOwnedByCurrentUser} loading={deleteMutation.isPending && deleteMutation.variables === item.id} onClick={() => deleteMutation.mutate(item.id)}>
-                  {t("templates.delete")}
-                </Button>,
+                <div key="actions" className="responsive-list-actions">
+                  <Button size="small" icon={item.isOwnedByCurrentUser ? undefined : <EyeOutlined />} onClick={() => openTemplateDrawer(item.id)}>
+                    {item.isOwnedByCurrentUser ? t("common.edit") : t("common.preview")}
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<CopyOutlined />}
+                    disabled={!item.isOwnedByCurrentUser}
+                    onClick={async () => {
+                      await apiClient.post(`/participant-templates/${item.id}/clone`);
+                      message.success(t("templates.templateCloned"));
+                      void queryClient.invalidateQueries({ queryKey: ["templates"] });
+                    }}
+                  >
+                    {t("templates.clone")}
+                  </Button>
+                  <Button size="small" key="delete" danger icon={<DeleteOutlined />} disabled={!item.isOwnedByCurrentUser} loading={deleteMutation.isPending && deleteMutation.variables === item.id} onClick={() => deleteMutation.mutate(item.id)}>
+                    {t("templates.delete")}
+                  </Button>
+                </div>,
               ]}
             >
               <List.Item.Meta
@@ -456,7 +460,7 @@ export function ParticipantTemplatesPageV2() {
       <Drawer
         open={drawerOpen}
         onClose={closeDrawer}
-        width={1280}
+        width={screens.lg ? 1280 : "100%"}
         title={selectedId ? (isReadonlySelection ? `${t("common.preview")} · ${t("templates.title")}` : `${t("common.edit")} · ${t("templates.title")}`) : `${t("templates.new")} · ${t("templates.title")}`}
         extra={
           isReadonlySelection ? undefined : (
@@ -507,7 +511,7 @@ export function ParticipantTemplatesPageV2() {
             </Form>
           </Panel>
 
-          <div className="workspace-grid" style={{ gridTemplateColumns: "minmax(360px, 440px) minmax(0, 1fr)" }}>
+          <div className="workspace-grid templates-editor-grid">
             <Panel>
               <Form layout="vertical" disabled={isReadonlySelection}>
                 {isReadonlySelection ? <div className="subtle-help">{t("common.readonlyForeignData")}</div> : null}

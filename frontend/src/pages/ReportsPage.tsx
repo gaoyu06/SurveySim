@@ -705,6 +705,7 @@ export function ReportsPage() {
                   rowKey="key"
                   pagination={false}
                   dataSource={[...diffRows].sort((a, b) => b.largestDelta - a.largestDelta)}
+                  scroll={{ x: 860 }}
                   rowClassName={(record) => (record.questionId === selectedCompareQuestionId ? "report-row-active" : "")}
                   onRow={(record) => ({
                     onClick: () => setSelectedCompareQuestionId(record.questionId),

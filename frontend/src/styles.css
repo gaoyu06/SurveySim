@@ -205,6 +205,10 @@ h1, h2, h3, h4, .display-title {
   max-width: 100%;
 }
 
+.page-header-actions > .ant-space-item {
+  min-width: 0;
+}
+
 .page-title {
   font-size: 34px;
   margin: 0;
@@ -579,6 +583,27 @@ h1, h2, h3, h4, .display-title {
   margin-top: 6px;
 }
 
+.responsive-list-item .ant-list-item-action {
+  margin-inline-start: 16px;
+}
+
+.responsive-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.responsive-form-inline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.responsive-form-inline .ant-form-item {
+  margin-bottom: 0;
+}
+
 .chart-box {
   min-height: 340px;
 }
@@ -589,6 +614,10 @@ h1, h2, h3, h4, .display-title {
 
 .llm-configs-table .ant-table-container {
   overflow-x: auto;
+}
+
+.templates-editor-grid {
+  grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
 }
 
 .table-action-scroll {
@@ -960,6 +989,25 @@ h1, h2, h3, h4, .display-title {
     justify-content: flex-start;
   }
 
+  .responsive-list-item {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px;
+  }
+
+  .responsive-list-item .ant-list-item-main {
+    width: 100%;
+  }
+
+  .responsive-list-item .ant-list-item-action {
+    margin-inline-start: 0;
+    width: 100%;
+  }
+
+  .responsive-list-actions {
+    justify-content: flex-start;
+  }
+
   .condition-row {
     grid-template-columns: 1fr;
   }
@@ -982,6 +1030,10 @@ h1, h2, h3, h4, .display-title {
   .help-callout__list,
   .run-summary-grid,
   .run-stage-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .templates-editor-grid {
     grid-template-columns: 1fr;
   }
 }

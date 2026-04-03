@@ -1,6 +1,6 @@
 import { DeleteOutlined, ExclamationCircleOutlined, EyeOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Empty, List, Space, Switch, Typography } from "antd";
+import { App, Button, Drawer, Empty, Grid, List, Space, Switch, Typography } from "antd";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SurveySchemaDto } from "@surveysim/shared";
@@ -28,6 +28,7 @@ export function SurveysListPage() {
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
   const { t } = useI18n();
+  const screens = Grid.useBreakpoint();
   const currentUser = authStore((state) => state.user);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [onlyOwnData, setOnlyOwnData] = useState(true);
@@ -94,9 +95,9 @@ export function SurveysListPage() {
         title={t("surveys.title")}
         subtitle={t("surveys.listSubtitle")}
         actions={
-          <Space>
+          <Space wrap>
             {currentUser?.role === "admin" ? (
-              <Space>
+              <Space wrap>
                 <span>{t("common.onlyMine")}</span>
                 <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
               </Space>
@@ -144,29 +145,32 @@ export function SurveysListPage() {
           dataSource={surveysQuery.data ?? []}
           renderItem={(item) => (
             <List.Item
+              className="responsive-list-item"
               actions={[
-                <Button key="preview" icon={<EyeOutlined />} onClick={() => navigate(`/content-tasks/${item.id}/preview`)}>
-                  {t("common.preview")}
-                </Button>,
-                <Button
-                  key="edit"
-                  disabled={item.isOwnedByCurrentUser === false}
-                  onClick={() => {
-                    setEditingSurveyId(item.id);
-                    setHasUnsavedDraft(false);
-                    setDraft({
-                      rawText: item.rawText,
-                      schema: item.schema,
-                      extractionNotes: [],
-                    });
-                    setDrawerOpen(true);
-                  }}
-                >
-                  {t("common.edit")}
-                </Button>,
-                <Button key="delete" danger disabled={item.isOwnedByCurrentUser === false} icon={<DeleteOutlined />} onClick={() => confirmDelete(item)}>
-                  {t("common.delete")}
-                </Button>,
+                <div key="actions" className="responsive-list-actions">
+                  <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/content-tasks/${item.id}/preview`)}>
+                    {t("common.preview")}
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={item.isOwnedByCurrentUser === false}
+                    onClick={() => {
+                      setEditingSurveyId(item.id);
+                      setHasUnsavedDraft(false);
+                      setDraft({
+                        rawText: item.rawText,
+                        schema: item.schema,
+                        extractionNotes: [],
+                      });
+                      setDrawerOpen(true);
+                    }}
+                  >
+                    {t("common.edit")}
+                  </Button>
+                  <Button size="small" danger disabled={item.isOwnedByCurrentUser === false} icon={<DeleteOutlined />} onClick={() => confirmDelete(item)}>
+                    {t("common.delete")}
+                  </Button>
+                </div>,
               ]}
             >
               <List.Item.Meta
@@ -181,7 +185,7 @@ export function SurveysListPage() {
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={980}
+        width={screens.lg ? 980 : "100%"}
         title={t("surveys.editSurvey")}
         extra={
           <Space>

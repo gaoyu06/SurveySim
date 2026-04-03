@@ -5,6 +5,7 @@ import {
   Card,
   Checkbox,
   Empty,
+  Grid,
   Input,
   Radio,
   Rate,
@@ -59,6 +60,9 @@ function renderQuestionMeta(question: SurveyQuestionDto, t: (key: string, params
 function MatrixPreviewTable({ question, t }: { question: SurveyQuestionDto; t: (key: string, params?: Record<string, string | number>) => string }) {
   const matrix = question.matrix;
   const [valueByRow, setValueByRow] = useState<Record<string, string | undefined>>({});
+  const screens = Grid.useBreakpoint();
+  const rowLabelWidth = screens.md ? 220 : 160;
+  const optionWidth = screens.md ? 120 : 88;
   const columns = useMemo<ColumnsType<MatrixRowDto>>(() => {
     if (!matrix) return [];
 
@@ -68,7 +72,7 @@ function MatrixPreviewTable({ question, t }: { question: SurveyQuestionDto; t: (
         dataIndex: "label",
         key: "label",
         fixed: "left",
-        width: 220,
+        width: rowLabelWidth,
         render: (_, row) => (
           <Space direction="vertical" size={2}>
             <Typography.Text>{row.label}</Typography.Text>
@@ -80,7 +84,7 @@ function MatrixPreviewTable({ question, t }: { question: SurveyQuestionDto; t: (
         title: column.label,
         dataIndex: column.id,
         key: column.id,
-        width: 120,
+        width: optionWidth,
         align: "center" as const,
         render: (_: unknown, row: MatrixRowDto) => (
           <Radio
@@ -92,7 +96,7 @@ function MatrixPreviewTable({ question, t }: { question: SurveyQuestionDto; t: (
         ),
       })),
     ];
-  }, [matrix, t, valueByRow]);
+  }, [matrix, optionWidth, rowLabelWidth, t, valueByRow]);
 
   if (!matrix) return null;
 
@@ -103,7 +107,7 @@ function MatrixPreviewTable({ question, t }: { question: SurveyQuestionDto; t: (
       pagination={false}
       dataSource={matrix.rows}
       columns={columns}
-      scroll={{ x: true }}
+      scroll={{ x: rowLabelWidth + matrix.columns.length * optionWidth }}
     />
   );
 }

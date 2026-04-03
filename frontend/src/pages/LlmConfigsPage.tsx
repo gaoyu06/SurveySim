@@ -1,7 +1,7 @@
 import { CheckCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Form, Input, InputNumber, Space, Switch, Table, Tag } from "antd";
+import { App, Button, Drawer, Form, Grid, Input, InputNumber, Space, Switch, Table, Tag } from "antd";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { llmProviderConfigInputSchema, type LlmProviderConfigDto, type LlmProviderConfigInput } from "@surveysim/shared";
@@ -25,6 +25,7 @@ const defaultValues: LlmProviderConfigInput = {
 
 export function LlmConfigsPage() {
   const { t } = useI18n();
+  const screens = Grid.useBreakpoint();
   const currentUser = authStore((state) => state.user);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<LlmProviderConfigDto | null>(null);
@@ -128,9 +129,9 @@ export function LlmConfigsPage() {
         title={t("llm.title")}
         subtitle={t("llm.subtitle")}
         actions={
-          <Space>
+          <Space wrap>
             {currentUser?.role === "admin" ? (
-              <Space>
+              <Space wrap>
                 <span>{t("common.onlyMine")}</span>
                 <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
               </Space>
@@ -215,7 +216,7 @@ export function LlmConfigsPage() {
       <Drawer
         open={open}
         onClose={closeDrawer}
-        width={520}
+        width={screens.md ? 520 : "100%"}
         title={editing ? t("llm.editConfig") : t("llm.createConfig")}
       >
         <form onSubmit={form.handleSubmit(submit)} noValidate>
@@ -264,7 +265,7 @@ export function LlmConfigsPage() {
               render={({ field }) => <Input {...field} value={field.value ?? ""} />}
             />
           </Form.Item>
-          <Space>
+          <div className="responsive-form-inline">
             <Form.Item label={t("llm.temperature")} validateStatus={form.formState.errors.temperature ? "error" : ""} help={form.formState.errors.temperature?.message}>
               <Controller
                 name="temperature"
@@ -294,8 +295,8 @@ export function LlmConfigsPage() {
                 )}
               />
             </Form.Item>
-          </Space>
-          <Space>
+          </div>
+          <div className="responsive-form-inline">
             <Form.Item label={t("llm.timeoutMs")} validateStatus={form.formState.errors.timeoutMs ? "error" : ""} help={form.formState.errors.timeoutMs?.message}>
               <Controller
                 name="timeoutMs"
@@ -338,7 +339,7 @@ export function LlmConfigsPage() {
                 )}
               />
             </Form.Item>
-          </Space>
+          </div>
           <Form.Item label={t("llm.setAsDefault")}>
             <Controller
               name="isDefault"
