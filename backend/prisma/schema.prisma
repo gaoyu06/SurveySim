@@ -81,7 +81,7 @@ model ParticipantTemplate {
   id                String            @id @default(cuid())
   userId            String
   name              String
-  description       String?
+  description       String?           @db.Text
   dimensions        Json
   sampleSizePreview Int               @default(200)
   createdAt         DateTime          @default(now())
@@ -102,7 +102,7 @@ model ParticipantRule {
   priority   Int
   scope      Json?
   assignment Json
-  note       String?
+  note       String?  @db.Text
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -114,10 +114,10 @@ model ParticipantRule {
 model Survey {
   id                     String          @id @default(cuid())
   userId                 String
-  title                  String
-  description            String?
-  sourceText             String
-  respondentInstructions String?
+  title                  String          @db.Text
+  description            String?         @db.Text
+  sourceText             String          @db.LongText
+  respondentInstructions String?         @db.Text
   language               String          @default("auto")
   schema                 Json
   createdAt              DateTime        @default(now())
@@ -134,8 +134,8 @@ model Survey {
 model SurveySection {
   id           String   @id @default(cuid())
   surveyId     String
-  title        String
-  description  String?
+  title        String   @db.Text
+  description  String?  @db.Text
   displayOrder Int
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -152,10 +152,10 @@ model SurveyQuestion {
   sectionId              String?
   code                   String?
   type                   String
-  title                  String
-  description            String?
+  title                  String   @db.Text
+  description            String?  @db.Text
   required               Boolean  @default(false)
-  respondentInstructions String?
+  respondentInstructions String?  @db.Text
   validation             Json?
   displayOrder           Int
   createdAt              DateTime @default(now())
@@ -196,8 +196,8 @@ model MockRun {
   concurrency           Int
   reuseIdentity         Boolean   @default(false)
   reusePersonaPrompt    Boolean   @default(false)
-  extraSystemPrompt     String?
-  extraRespondentPrompt String?
+  extraSystemPrompt     String?   @db.Text
+  extraRespondentPrompt String?   @db.Text
   status                RunStatus @default(DRAFT)
   progress              Json
   summary               Json?
@@ -228,7 +228,7 @@ model ParticipantInstance {
   ordinal      Int
   status       TaskStatus @default(PENDING)
   identity     Json
-  errorMessage String?
+  errorMessage String?    @db.Text
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -244,9 +244,9 @@ model PersonaProfile {
   id                    String     @id @default(cuid())
   participantInstanceId String     @unique
   status                TaskStatus @default(PENDING)
-  promptText            String?
+  promptText            String?    @db.LongText
   rawPayload            Json?
-  errorMessage          String?
+  errorMessage          String?    @db.Text
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
 
@@ -260,7 +260,7 @@ model SurveyResponse {
   status                TaskStatus @default(PENDING)
   rawPayload            Json?
   validationErrors      Json?
-  errorMessage          String?
+  errorMessage          String?    @db.Text
   startedAt             DateTime?
   completedAt           DateTime?
   createdAt             DateTime   @default(now())
@@ -294,7 +294,7 @@ model RunLog {
   participantInstanceId String?
   stage                 String
   level                 LogLevel  @default(INFO)
-  message               String
+  message               String    @db.Text
   payload               Json?
   createdAt             DateTime  @default(now())
 
@@ -333,10 +333,12 @@ model AggregatedReport {
 }
 
 model SystemConfig {
-  id                 String   @id @default("system")
-  defaultDailyUsageLimit Int  @default(20)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                    String   @id @default("system")
+  defaultDailyUsageLimit Int     @default(20)
+  defaultRunConcurrency  Int     @default(4)
+  maxUserRunConcurrency  Int     @default(64)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model UserDailyUsage {

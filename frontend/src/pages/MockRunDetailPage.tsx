@@ -12,7 +12,7 @@ import {
   StopOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Form, InputNumber, List, Modal, Progress, Space, Table, Tooltip, Typography } from "antd";
+import { App, Button, Form, Grid, InputNumber, List, Modal, Progress, Space, Table, Tag, Tooltip, Typography } from "antd";
 import { useMemo, useState, type Key } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -38,12 +38,26 @@ type ParticipantRow = {
   errorMessage?: string;
 };
 
+function summarizeText(text: string | undefined, maxLength = 180) {
+  if (!text?.trim()) {
+    return "";
+  }
+
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength).trimEnd()}…`;
+}
+
 export function MockRunDetailPage() {
   const { id = "" } = useParams();
   const { message } = App.useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t } = useI18n();
+  const screens = Grid.useBreakpoint();
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<Key[]>([]);
   const [appendModalOpen, setAppendModalOpen] = useState(false);
   const [additionalCount, setAdditionalCount] = useState(10);
@@ -130,7 +144,6 @@ export function MockRunDetailPage() {
 
     const definition = templateAttributeMap.get(attribute);
     const presetMap = new Map((definition?.presetValues ?? []).map((item) => [item.value, item.label] as const));
-
     const mapScalar = (value: string | number | boolean) => presetMap.get(String(value)) ?? String(value);
 
     if (Array.isArray(rawValue)) {
@@ -148,6 +161,28 @@ export function MockRunDetailPage() {
     }
 
     return [];
+  };
+
+  const getIdentityItems = (identity: ParticipantIdentity) => {
+    const identityRecord = identity as Record<string, unknown>;
+    const fallbackOrder = ["country", "region", "continent", "gender", "ageRange", "occupation", "educationLevel", "incomeRange", "maritalStatus", "interests", "customTags"];
+    const orderedDimensions = Array.from(
+      new Set(
+        [...templateAttributes.map((attribute) => attribute.key), ...fallbackOrder, ...Object.keys(identityRecord)].filter((item) => item && item !== "noise" && item !== "extra"),
+      ),
+    );
+
+    return orderedDimensions
+      .map((attribute) => {
+        const values = toDisplayValues(attribute, identityRecord[attribute]);
+        if (!values.length) return null;
+        return {
+          attribute,
+          label: formatAttributeLabel(attribute),
+          text: `${formatAttributeLabel(attribute)}: ${values.join(", ")}`,
+        };
+      })
+      .filter(Boolean) as Array<{ attribute: string; label: string; text: string }>;
   };
 
   const getParticipantVisualState = (participant: ParticipantRow) => {
@@ -177,7 +212,7 @@ export function MockRunDetailPage() {
       };
     }
 
-    if (participant.personaStatus === "running" || participant.responseStatus === "running") {
+    if (participant.status === "running" || participant.personaStatus === "running" || participant.responseStatus === "running") {
       return {
         key: "running",
         label: t("status.running"),
@@ -192,41 +227,40 @@ export function MockRunDetailPage() {
     };
   };
 
-  const renderIdentity = (identity: ParticipantIdentity) => {
-    const identityRecord = identity as Record<string, unknown>;
-    const fallbackOrder = ["country", "region", "continent", "gender", "ageRange", "occupation", "educationLevel", "incomeRange", "maritalStatus", "interests", "customTags"];
-    const orderedDimensions = Array.from(
-      new Set(
-        [...templateAttributes.map((attribute) => attribute.key), ...fallbackOrder, ...Object.keys(identityRecord)].filter((item) => item && item !== "noise" && item !== "extra"),
-      ),
-    );
-
-    const items = orderedDimensions
-      .map((attribute) => {
-        const values = toDisplayValues(attribute, identityRecord[attribute]);
-        if (!values.length) return null;
-        return `${formatAttributeLabel(attribute)}: ${values.join(", ")}`;
-      })
-      .filter(Boolean) as string[];
-
-    const primaryItems = items.slice(0, 3);
-    const secondaryItems = items.slice(3, 6);
-    const remainderCount = Math.max(0, items.length - 6);
+  const renderStatusTag = (label: string, status: string | undefined) => {
+    const normalized = status ?? "pending";
+    const color =
+      normalized === "completed"
+        ? "success"
+        : normalized === "running"
+          ? "processing"
+          : normalized === "failed"
+            ? "error"
+            : normalized === "canceled"
+              ? "default"
+              : "default";
 
     return (
-      <Space direction="vertical" size={4} style={{ width: "100%" }}>
-        <Typography.Text strong>
-          {primaryItems.length ? primaryItems.join(" · ") : t("mockRunDetail.identityEmpty")}
-        </Typography.Text>
-        {secondaryItems.length ? (
-          <Typography.Text type="secondary">{secondaryItems.join(" · ")}</Typography.Text>
-        ) : null}
-        {remainderCount > 0 ? (
-          <Typography.Text type="secondary">{t("mockRunDetail.identityMore", { count: remainderCount })}</Typography.Text>
-        ) : null}
-      </Space>
+      <Tag color={color} className="participant-stage-tag">
+        {label}: {t(`status.${normalized}`)}
+      </Tag>
     );
   };
+
+  const summaryMetrics = [
+    [t("mockRunDetail.identityCompleted"), runQuery.data?.progress?.identityCompleted ?? 0],
+    [t("mockRunDetail.personaCompleted"), runQuery.data?.progress?.personaCompleted ?? 0],
+    [t("mockRunDetail.responsesCompleted"), runQuery.data?.progress?.responseCompleted ?? 0],
+    [t("mockRunDetail.failures"), runQuery.data?.progress?.failed ?? 0],
+    [t("mockRunDetail.canceled"), runQuery.data?.progress?.canceled ?? 0],
+  ];
+
+  const overviewCards = [
+    [t("mockRunDetail.currentStatus"), runQuery.data ? t(`status.${runQuery.data.status}`) : "--"],
+    [t("mockRuns.participantCount"), String(runQuery.data?.participantCount ?? 0)],
+    [t("mockRunDetail.requestedConcurrency"), String(runQuery.data?.concurrency ?? 0)],
+    [t("common.owner"), runQuery.data?.ownerEmail ?? "--"],
+  ];
 
   const confirmDelete = () => {
     if (!runQuery.data) return;
@@ -282,7 +316,7 @@ export function MockRunDetailPage() {
         title={runQuery.data?.name ?? t("mockRunDetail.titleFallback")}
         subtitle={`${t("mockRunDetail.subtitle")}${runQuery.data?.ownerEmail ? ` · ${t("common.owner")}: ${runQuery.data.ownerEmail}` : ""}`}
         actions={
-          <Space>
+          <Space wrap className="page-header-actions">
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/mock-runs")}>
               {t("common.back")}
             </Button>
@@ -299,55 +333,55 @@ export function MockRunDetailPage() {
             <Button onClick={() => queryClient.invalidateQueries({ queryKey: ["mock-run", id] })}>
               {t("common.refresh")}
             </Button>
-            <Button
-              icon={<PlusOutlined />}
-              disabled={isActive || isReadonlyRun}
-              onClick={() => setAppendModalOpen(true)}
-            >
+            <Button icon={<PlusOutlined />} disabled={isActive || isReadonlyRun} onClick={() => setAppendModalOpen(true)}>
               {t("mockRuns.appendParticipants")}
             </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              loading={retryMutation.isPending}
-              disabled={selectedParticipantIds.length === 0 || isReadonlyRun}
-              onClick={() => retryMutation.mutate()}
-            >
+            <Button icon={<ReloadOutlined />} loading={retryMutation.isPending} disabled={selectedParticipantIds.length === 0 || isReadonlyRun} onClick={() => retryMutation.mutate()}>
               {t("mockRunDetail.retrySelected")}
             </Button>
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              loading={deleteMutation.isPending}
-              disabled={isReadonlyRun}
-              onClick={confirmDelete}
-            >
+            <Button danger icon={<DeleteOutlined />} loading={deleteMutation.isPending} disabled={isReadonlyRun} onClick={confirmDelete}>
               {t("mockRuns.delete")}
             </Button>
           </Space>
         }
       />
-      <div className="workspace-grid">
-        <div className="card-stack">
-          <Panel>
-            <Typography.Title level={4}>{t("mockRunDetail.overallProgress")}</Typography.Title>
-            <Progress percent={percent} status={runQuery.data?.status === "failed" ? "exception" : "active"} />
-            <List
-              dataSource={[
-                [t("mockRunDetail.identityCompleted"), runQuery.data?.progress?.identityCompleted ?? 0],
-                [t("mockRunDetail.personaCompleted"), runQuery.data?.progress?.personaCompleted ?? 0],
-                [t("mockRunDetail.responsesCompleted"), runQuery.data?.progress?.responseCompleted ?? 0],
-                [t("mockRunDetail.failures"), runQuery.data?.progress?.failed ?? 0],
-                [t("mockRunDetail.canceled"), runQuery.data?.progress?.canceled ?? 0],
-              ]}
-              renderItem={(item) => (
-                <List.Item>
-                  <List.Item.Meta title={String(item[0])} />
-                  <Typography.Text>{String(item[1])}</Typography.Text>
-                </List.Item>
-              )}
-            />
-          </Panel>
-          <Panel>
+
+      <div className="run-detail-shell">
+        <Panel style={{ padding: screens.md ? 24 : 18 }}>
+          <div className="run-summary-hero">
+            <div className="run-summary-copy">
+              <Typography.Text className="topbar-label">{t("mockRunDetail.runMeta")}</Typography.Text>
+              <Typography.Title level={screens.md ? 2 : 3} style={{ marginTop: 8, marginBottom: 8 }}>
+                {percent}% · {runQuery.data ? t(`status.${runQuery.data.status}`) : "--"}
+              </Typography.Title>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                {t("mockRunDetail.personaPreviewHint")}
+              </Typography.Paragraph>
+            </div>
+            <div className="run-summary-grid">
+              {overviewCards.map(([label, value]) => (
+                <div key={String(label)} className="run-summary-card">
+                  <Typography.Text className="metric-label">{String(label)}</Typography.Text>
+                  <Typography.Text className="run-summary-card__value">{String(value)}</Typography.Text>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Progress percent={percent} status={runQuery.data?.status === "failed" ? "exception" : "active"} />
+
+          <div className="run-stage-grid">
+            {summaryMetrics.map(([label, value]) => (
+              <div key={String(label)} className="run-stage-card">
+                <Typography.Text className="metric-label">{String(label)}</Typography.Text>
+                <Typography.Text className="run-stage-card__value">{String(value)}</Typography.Text>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <div className="run-detail-main">
+          <Panel style={{ minHeight: 0 }}>
             <Typography.Title level={4}>{t("mockRunDetail.executionLog")}</Typography.Title>
             <div className="run-log-shell">
               <div className="run-log-fade run-log-fade--top" />
@@ -368,83 +402,171 @@ export function MockRunDetailPage() {
               <div className="run-log-fade run-log-fade--bottom" />
             </div>
           </Panel>
-        </div>
-        <Panel>
-          <Typography.Title level={4}>{t("mockRunDetail.participants")}</Typography.Title>
-          <Table
-            rowKey="id"
-            rowSelection={{
-              selectedRowKeys: selectedParticipantIds,
-              onChange: setSelectedParticipantIds,
-            }}
-            dataSource={participants}
-            pagination={{ pageSize: 10 }}
-            columns={[
-              { title: "#", dataIndex: "ordinal", width: 72 },
-              {
-                title: t("common.status"),
-                width: 84,
-                align: "center",
-                render: (_: unknown, item: ParticipantRow) => {
-                  const visual = getParticipantVisualState(item);
-                  const tooltipLines = [visual.label];
-                  if (item.errorMessage) {
-                    tooltipLines.push(item.errorMessage);
-                  }
 
-                  return <Tooltip title={tooltipLines.join(" · ")}>{visual.icon}</Tooltip>;
+          <Panel style={{ minHeight: 0 }}>
+            <div className="participant-table-head">
+              <div>
+                <Typography.Title level={4} style={{ marginBottom: 4 }}>
+                  {t("mockRunDetail.participants")}
+                </Typography.Title>
+                <Typography.Text type="secondary">
+                  {t("mockRunDetail.personaPreviewHint")}
+                </Typography.Text>
+              </div>
+              <Tag color="blue">{`${selectedParticipantIds.length}/${participants.length}`}</Tag>
+            </div>
+
+            <Table
+              size="small"
+              rowKey="id"
+              rowSelection={{
+                selectedRowKeys: selectedParticipantIds,
+                onChange: setSelectedParticipantIds,
+              }}
+              dataSource={participants}
+              pagination={{ pageSize: screens.xxl ? 14 : screens.lg ? 10 : 6 }}
+              scroll={{ x: 1180 }}
+              columns={[
+                { title: "#", dataIndex: "ordinal", width: 64, fixed: "left" },
+                {
+                  title: t("mockRunDetail.stageStatus"),
+                  width: 230,
+                  render: (_: unknown, item: ParticipantRow) => {
+                    const visual = getParticipantVisualState(item);
+                    return (
+                      <div className="participant-stage-cell">
+                        <Space size={8}>
+                          {visual.icon}
+                          <Typography.Text strong>{visual.label}</Typography.Text>
+                        </Space>
+                        <div className="participant-stage-tags">
+                          {renderStatusTag(t("common.status"), item.status)}
+                          {renderStatusTag(t("mockRunDetail.persona"), item.personaStatus)}
+                          {renderStatusTag(t("mockRunDetail.response"), item.responseStatus)}
+                        </div>
+                      </div>
+                    );
+                  },
                 },
-              },
-              {
-                title: t("mockRunDetail.identity"),
-                render: (_: unknown, item: ParticipantRow) => (
-                  <Tooltip
-                    placement="leftTop"
-                    title={
-                      item.personaPrompt ? (
-                        <div style={{ maxWidth: 420, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{item.personaPrompt}</div>
-                      ) : (
-                        t("mockRunDetail.personaUnavailable")
-                      )
-                    }
-                  >
-                    <div>{renderIdentity(item.identity)}</div>
-                  </Tooltip>
-                ),
-              },
-              {
-                title: t("mockRunDetail.responseProgress"),
-                width: 220,
-                render: (_: unknown, item: ParticipantRow) => {
-                  const progress = item.progressPercent ?? 0;
-                  const visual = getParticipantVisualState(item);
-                  return (
-                    <Space direction="vertical" size={4} style={{ width: "100%" }}>
-                      <Progress
-                        percent={progress}
-                        size="small"
-                        status={visual.key === "failed" ? "exception" : visual.key === "completed" ? "success" : visual.key === "running" ? "active" : "normal"}
-                      />
-                      <Typography.Text type="secondary">{progress}%</Typography.Text>
-                    </Space>
-                  );
+                {
+                  title: t("mockRunDetail.identitySummary"),
+                  width: 320,
+                  render: (_: unknown, item: ParticipantRow) => {
+                    const identityItems = getIdentityItems(item.identity);
+                    const previewItems = identityItems.slice(0, 4);
+                    return (
+                      <Tooltip
+                        placement="topLeft"
+                        title={
+                          identityItems.length ? (
+                            <div className="participant-tooltip-list">
+                              {identityItems.slice(0, 8).map((entry) => (
+                                <div key={entry.text}>{entry.text}</div>
+                              ))}
+                            </div>
+                          ) : (
+                            t("mockRunDetail.identityEmpty")
+                          )
+                        }
+                      >
+                        <div className="participant-identity-cell">
+                          {previewItems.length ? (
+                            previewItems.map((entry) => (
+                              <Tag key={entry.text} className="participant-identity-tag">
+                                {entry.text}
+                              </Tag>
+                            ))
+                          ) : (
+                            <Typography.Text type="secondary">{t("mockRunDetail.identityEmpty")}</Typography.Text>
+                          )}
+                          {identityItems.length > previewItems.length ? (
+                            <Typography.Text type="secondary" className="participant-identity-more">
+                              {t("mockRunDetail.identityMore", { count: identityItems.length - previewItems.length })}
+                            </Typography.Text>
+                          ) : null}
+                        </div>
+                      </Tooltip>
+                    );
+                  },
                 },
-              },
-            ]}
-          />
-        </Panel>
+                {
+                  title: (
+                    <Tooltip title={t("mockRunDetail.personaPreviewHint")}>
+                      <span>{t("mockRunDetail.personaPreview")}</span>
+                    </Tooltip>
+                  ),
+                  width: 280,
+                  render: (_: unknown, item: ParticipantRow) => {
+                    const preview = summarizeText(item.personaPrompt, 160);
+                    const tooltipPreview = summarizeText(item.personaPrompt, 320);
+                    return (
+                      <Tooltip
+                        placement="topLeft"
+                        title={
+                          preview ? (
+                            <div className="persona-preview-tooltip">
+                              <div>{tooltipPreview}</div>
+                              <Typography.Text type="secondary">{t("mockRunDetail.personaHidden")}</Typography.Text>
+                            </div>
+                          ) : (
+                            t("mockRunDetail.personaUnavailable")
+                          )
+                        }
+                      >
+                        <div className="persona-preview-cell">
+                          <Typography.Paragraph className="persona-preview-text">
+                            {preview || t("mockRunDetail.personaUnavailable")}
+                          </Typography.Paragraph>
+                        </div>
+                      </Tooltip>
+                    );
+                  },
+                },
+                {
+                  title: t("mockRunDetail.responseProgress"),
+                  width: 180,
+                  render: (_: unknown, item: ParticipantRow) => {
+                    const progress = item.progressPercent ?? 0;
+                    const visual = getParticipantVisualState(item);
+                    return (
+                      <div className="participant-progress-cell">
+                        <Progress
+                          percent={progress}
+                          size="small"
+                          status={visual.key === "failed" ? "exception" : visual.key === "completed" ? "success" : visual.key === "running" ? "active" : "normal"}
+                        />
+                        <Typography.Text type="secondary">{progress}%</Typography.Text>
+                      </div>
+                    );
+                  },
+                },
+                {
+                  title: t("mockRunDetail.error"),
+                  width: 220,
+                  responsive: ["xl"],
+                  render: (_: unknown, item: ParticipantRow) =>
+                    item.errorMessage ? (
+                      <Tooltip title={item.errorMessage}>
+                        <Typography.Text type="danger" ellipsis>
+                          {item.errorMessage}
+                        </Typography.Text>
+                      </Tooltip>
+                    ) : (
+                      <Typography.Text type="secondary">—</Typography.Text>
+                    ),
+                },
+              ]}
+            />
+          </Panel>
+        </div>
       </div>
-      <Modal
-        open={startModeModalOpen}
-        title={t("mockRuns.startModeTitle")}
-        footer={null}
-        onCancel={() => setStartModeModalOpen(false)}
-      >
+
+      <Modal open={startModeModalOpen} title={t("mockRuns.startModeTitle")} footer={null} onCancel={() => setStartModeModalOpen(false)}>
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
             {t("mockRuns.startModeDescription")}
           </Typography.Paragraph>
-          <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+          <Space style={{ width: "100%", justifyContent: "flex-end" }} wrap>
             <Button onClick={() => setStartModeModalOpen(false)}>
               {t("common.cancel")}
             </Button>
@@ -476,6 +598,7 @@ export function MockRunDetailPage() {
           </Space>
         </Space>
       </Modal>
+
       <Modal
         open={appendModalOpen}
         title={t("mockRuns.appendParticipantsTitle")}
@@ -491,13 +614,7 @@ export function MockRunDetailPage() {
           </Typography.Paragraph>
           <Form layout="vertical">
             <Form.Item label={t("mockRuns.additionalCount")} extra={t("mockRuns.additionalCountHint")}>
-              <InputNumber
-                min={1}
-                max={1000}
-                style={{ width: "100%" }}
-                value={additionalCount}
-                onChange={(value) => setAdditionalCount(value ?? 1)}
-              />
+              <InputNumber min={1} max={1000} style={{ width: "100%" }} value={additionalCount} onChange={(value) => setAdditionalCount(value ?? 1)} />
             </Form.Item>
           </Form>
         </Space>

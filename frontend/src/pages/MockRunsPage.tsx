@@ -1,7 +1,7 @@
 import { DeleteOutlined, ExclamationCircleOutlined, PlayCircleOutlined, PlusOutlined, StopOutlined } from "@ant-design/icons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Typography } from "antd";
+import { App, Button, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space, Switch, Table, Typography } from "antd";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Controller, useForm } from "react-hook-form";
@@ -13,6 +13,7 @@ import {
   type MockRunDto,
   type MockRunStartInput,
   type ParticipantTemplateDto,
+  type SystemRuntimeSettingsDto,
 } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
 import { FieldLabel, HelpCallout } from "@/components/Help";
@@ -36,11 +37,19 @@ const defaultValues: MockRunCreateInput = {
   extraRespondentPrompt: "",
 };
 
+function buildDefaultValues(defaultConcurrency: number): MockRunCreateInput {
+  return {
+    ...defaultValues,
+    concurrency: defaultConcurrency,
+  };
+}
+
 export function MockRunsPage() {
   const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t } = useI18n();
+  const screens = Grid.useBreakpoint();
   const currentUser = authStore((state) => state.user);
   const [isCreateDrawerOpen, setIsCreateDrawerOpen] = useState(false);
   const [startChoiceRun, setStartChoiceRun] = useState<MockRunDto | null>(null);
@@ -70,6 +79,14 @@ export function MockRunsPage() {
     }),
   ];
 
+  const runtimeSettingsQuery = useQuery({
+    queryKey: ["system-runtime-settings"],
+    queryFn: () => apiClient.get<SystemRuntimeSettingsDto>("/system/runtime-settings"),
+  });
+
+  const runtimeDefaultConcurrency = runtimeSettingsQuery.data?.defaultRunConcurrency ?? defaultValues.concurrency;
+  const maxAllowedConcurrency = currentUser?.role === "admin" ? 64 : runtimeSettingsQuery.data?.maxUserRunConcurrency ?? 64;
+
   const createMutation = useMutation({
     mutationFn: (values: MockRunCreateInput) =>
       apiClient.post<MockRunDto>("/mock-runs", {
@@ -78,7 +95,7 @@ export function MockRunsPage() {
       }),
     onSuccess: (result) => {
       message.success(t("mockRuns.runCreated"));
-      form.reset(defaultValues);
+      form.reset(buildDefaultValues(runtimeDefaultConcurrency));
       setIsCreateDrawerOpen(false);
       queryClient.invalidateQueries({ queryKey: ["mock-runs"] });
       navigate(`/mock-runs/${result.id}`);
@@ -192,7 +209,14 @@ export function MockRunsPage() {
                 <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
               </Space>
             ) : null}
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateDrawerOpen(true)}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                form.reset(buildDefaultValues(runtimeDefaultConcurrency));
+                setIsCreateDrawerOpen(true);
+              }}
+            >
               {t("mockRuns.newRun")}
             </Button>
           </Space>
@@ -205,9 +229,11 @@ export function MockRunsPage() {
       />
       <Panel>
         <Table
+          size="small"
           rowKey="id"
           dataSource={runsQuery.data ?? []}
           pagination={false}
+          scroll={{ x: 920 }}
           columns={[
             { title: t("mockRuns.run"), dataIndex: "name" },
             { title: t("common.owner"), dataIndex: "ownerEmail" },
@@ -250,7 +276,7 @@ export function MockRunsPage() {
         />
       </Panel>
 
-      <Drawer title={t("mockRuns.createRunDrawerTitle")} width={560} open={isCreateDrawerOpen} onClose={() => setIsCreateDrawerOpen(false)}>
+      <Drawer title={t("mockRuns.createRunDrawerTitle")} width={screens.md ? 560 : "100%"} open={isCreateDrawerOpen} onClose={() => setIsCreateDrawerOpen(false)}>
         <form onSubmit={form.handleSubmit(submit)} noValidate>
           <Form layout="vertical" component={false}>
             <HelpCallout
@@ -292,8 +318,22 @@ export function MockRunsPage() {
               <Controller name="participantCount" control={form.control} render={({ field }) => <InputNumber min={1} max={1000} style={{ width: "100%" }} {...field} value={field.value} />} />
             </Form.Item>
             <Form.Item label={<FieldLabel label={t("mockRuns.concurrency")} hint={t("mockRuns.concurrencyHint")} />} validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
-              <Controller name="concurrency" control={form.control} render={({ field }) => <InputNumber min={1} max={64} style={{ width: "100%" }} {...field} value={field.value} />} />
+              <Controller
+                name="concurrency"
+                control={form.control}
+                render={({ field }) => (
+                  <InputNumber
+                    min={1}
+                    max={maxAllowedConcurrency}
+                    style={{ width: "100%" }}
+                    {...field}
+                    value={field.value}
+                    onChange={(value) => field.onChange(Math.min(value ?? runtimeDefaultConcurrency, maxAllowedConcurrency))}
+                  />
+                )}
+              />
             </Form.Item>
+            {currentUser?.role !== "admin" ? <div className="subtle-help">{t("mockRuns.concurrencyLimitHint", { default: runtimeDefaultConcurrency, max: maxAllowedConcurrency })}</div> : null}
             <Form.Item label={<FieldLabel label={t("mockRuns.extraSystemPrompt")} hint={t("mockRuns.extraSystemPromptHint")} />}>
               <Controller name="extraSystemPrompt" control={form.control} render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />} />
             </Form.Item>

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @surveysim/shared --filter @surveysim/backend --filter @surveysim/frontend dev",
     "build": "pnpm --filter @surveysim/shared build && pnpm --filter @surveysim/backend build && pnpm --filter @surveysim/frontend build",
+    "deploy:remote": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-remote.ps1",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "db:generate": "pnpm --filter @surveysim/backend prisma:generate",

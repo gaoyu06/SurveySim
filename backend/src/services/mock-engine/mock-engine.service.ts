@@ -21,6 +21,7 @@ import { LlmService } from "../llm/llm.service.js";
 import { ParticipantTemplateService } from "../participant-template.service.js";
 import { ReportService } from "../reporting/report.service.js";
 import { UsageLimitService } from "../usage-limit.service.js";
+import { SystemConfigService } from "../system-config.service.js";
 import {
   buildPersonaGenerateTask,
   buildSurveyRepairAnswerRecordTask,
@@ -45,6 +46,13 @@ function emptyProgress(total: number) {
     failed: 0,
     canceled: 0,
   };
+}
+
+function extractStoredTemplateAttributes(raw: unknown) {
+  const parsed = fromJson<
+    Array<string | Partial<ParticipantAttributeDefinitionDto>> | { attributes?: Array<string | Partial<ParticipantAttributeDefinitionDto>> }
+  >(raw);
+  return Array.isArray(parsed) ? parsed : parsed?.attributes ?? [];
 }
 
 function mapRun(run: {
@@ -861,6 +869,7 @@ export class MockEngineService {
   private readonly templateService = new ParticipantTemplateService();
   private readonly reportService = new ReportService();
   private readonly usageLimitService = new UsageLimitService();
+  private readonly systemConfigService = new SystemConfigService();
   private readonly activeRuns = new Map<string, RunContext>();
 
   async list(user: AuthUserContext, scope?: unknown) {
@@ -869,8 +878,8 @@ export class MockEngineService {
     const runs = await prisma.mockRun.findMany({ where, include: { user: true }, orderBy: { createdAt: "desc" } });
     await Promise.all(
       runs
-        .filter((run) => run.status === RunStatus.CANCELING && !this.activeRuns.has(run.id))
-        .map((run) => this.reconcileOrphanedCancelingRun(run.id)),
+        .filter((run) => activeRunStatuses.has(run.status) && !this.activeRuns.has(run.id))
+        .map((run) => this.reconcileOrphanedActiveRun(run.id)),
     );
 
     const refreshedRuns = await prisma.mockRun.findMany({ where, include: { user: true }, orderBy: { createdAt: "desc" } });
@@ -878,7 +887,7 @@ export class MockEngineService {
   }
 
   async get(user: AuthUserContext, runId: string) {
-    await this.reconcileOrphanedCancelingRun(runId);
+    await this.reconcileOrphanedActiveRun(runId);
 
     const run = await prisma.mockRun.findFirst({
       where: isAdmin(user) ? { id: runId } : { id: runId, userId: user.id },
@@ -904,9 +913,7 @@ export class MockEngineService {
     return {
       ...mapRun(run),
       isOwnedByCurrentUser: run.userId === user.id,
-      templateAttributes: normalizeParticipantAttributeDefinitions(
-        fromJson<Array<string | Partial<ParticipantAttributeDefinitionDto>>>(run.participantTemplate.dimensions),
-      ),
+      templateAttributes: normalizeParticipantAttributeDefinitions(extractStoredTemplateAttributes(run.participantTemplate.dimensions)),
       participants: run.participantInstances.map((participant) => ({
         id: participant.id,
         ordinal: participant.ordinal,
@@ -929,12 +936,17 @@ export class MockEngineService {
     };
   }
 
-  async create(userId: string, input: unknown) {
+  async create(user: AuthUserContext, input: unknown) {
     const payload = mockRunCreateInputSchema.parse(input);
+    const systemSettings = await this.systemConfigService.getRuntimeSettings();
+    if (user.role !== "admin" && payload.concurrency > systemSettings.maxUserRunConcurrency) {
+      throw new Error(`Concurrency cannot exceed ${systemSettings.maxUserRunConcurrency} for regular users`);
+    }
+
     const [template, survey, llmConfig] = await Promise.all([
-      prisma.participantTemplate.findFirst({ where: { id: payload.participantTemplateId, userId }, include: { rules: true } }),
-      prisma.survey.findFirst({ where: { id: payload.surveyId, userId } }),
-      prisma.llmProviderConfig.findFirst({ where: { id: payload.llmConfigId, OR: [{ userId }, { isPublic: true }] } }),
+      prisma.participantTemplate.findFirst({ where: { id: payload.participantTemplateId, userId: user.id }, include: { rules: true } }),
+      prisma.survey.findFirst({ where: { id: payload.surveyId, userId: user.id } }),
+      prisma.llmProviderConfig.findFirst({ where: { id: payload.llmConfigId, OR: [{ userId: user.id }, { isPublic: true }] } }),
     ]);
 
     if (!template) throw new Error("Participant template not found");
@@ -943,8 +955,17 @@ export class MockEngineService {
 
     const run = await prisma.mockRun.create({
       data: {
-        userId,
-        ...payload,
+        userId: user.id,
+        name: payload.name,
+        participantTemplateId: payload.participantTemplateId,
+        surveyId: payload.surveyId,
+        llmConfigId: payload.llmConfigId,
+        participantCount: payload.participantCount,
+        concurrency: payload.concurrency,
+        reuseIdentity: payload.reuseIdentity,
+        reusePersonaPrompt: payload.reusePersonaPrompt,
+        extraSystemPrompt: payload.extraSystemPrompt,
+        extraRespondentPrompt: payload.extraRespondentPrompt,
         status: RunStatus.DRAFT,
         progress: toJson(emptyProgress(payload.participantCount)),
       },
@@ -955,7 +976,7 @@ export class MockEngineService {
 
   async start(user: AuthUserContext, runId: string, input: unknown) {
     await this.usageLimitService.consumeOrThrow(user, "mock run start");
-    await this.reconcileOrphanedCancelingRun(runId);
+    await this.reconcileOrphanedActiveRun(runId);
 
     const payload = mockRunStartInputSchema.parse(input ?? {});
     const run = await prisma.mockRun.findFirst({ where: { id: runId, userId: user.id } });
@@ -999,7 +1020,7 @@ export class MockEngineService {
   }
 
   async delete(userId: string, runId: string) {
-    await this.reconcileOrphanedCancelingRun(runId);
+    await this.reconcileOrphanedActiveRun(runId);
 
     const run = await prisma.mockRun.findFirst({ where: { id: runId, userId } });
     if (!run) throw new Error("Mock run not found");
@@ -1014,6 +1035,7 @@ export class MockEngineService {
 
   async retryParticipants(userId: string, runId: string, participantIds: string[]) {
     await this.usageLimitService.consumeOrThrow({ id: userId, email: "", role: "user" }, "mock run retry");
+    await this.reconcileOrphanedActiveRun(runId);
     const run = await prisma.mockRun.findFirst({ where: { id: runId, userId } });
     if (!run) throw new Error("Mock run not found");
     if (this.activeRuns.has(runId)) throw new Error("Run is currently active");
@@ -1055,7 +1077,7 @@ export class MockEngineService {
 
   async appendParticipants(userId: string, runId: string, input: unknown) {
     await this.usageLimitService.consumeOrThrow({ id: userId, email: "", role: "user" }, "mock run append participants");
-    await this.reconcileOrphanedCancelingRun(runId);
+    await this.reconcileOrphanedActiveRun(runId);
 
     const payload = mockRunAppendInputSchema.parse(input);
     const run = await prisma.mockRun.findFirst({
@@ -1346,7 +1368,7 @@ export class MockEngineService {
       await this.log(runId, "system", error instanceof Error ? error.message : String(error), "ERROR");
     } finally {
       this.activeRuns.delete(runId);
-      await this.reconcileOrphanedCancelingRun(runId).catch(() => undefined);
+      await this.reconcileOrphanedActiveRun(runId).catch(() => undefined);
     }
   }
 
@@ -1365,6 +1387,10 @@ export class MockEngineService {
       where: { participantInstanceId: participantId },
       create: { participantInstanceId: participantId, status: TaskStatus.RUNNING },
       update: { status: TaskStatus.RUNNING, errorMessage: null },
+    });
+    await prisma.participantInstance.update({
+      where: { id: participantId },
+      data: { status: TaskStatus.RUNNING, errorMessage: null },
     });
 
     const identity = fromJson<ParticipantIdentity>(participant.identity);
@@ -1435,6 +1461,10 @@ export class MockEngineService {
       where: { participantInstanceId: participantId },
       create: { participantInstanceId: participantId, mockRunId: runId, status: TaskStatus.RUNNING, startedAt: new Date() },
       update: { status: TaskStatus.RUNNING, errorMessage: null, startedAt: new Date() },
+    });
+    await prisma.participantInstance.update({
+      where: { id: participantId },
+      data: { status: TaskStatus.RUNNING, errorMessage: null },
     });
 
     const identity = fromJson<ParticipantIdentity>(participant.identity);
@@ -1794,7 +1824,7 @@ export class MockEngineService {
     await this.log(runId, "system", "Run canceled", "WARN");
   }
 
-  private async reconcileOrphanedCancelingRun(runId: string) {
+  private async reconcileOrphanedActiveRun(runId: string) {
     if (this.activeRuns.has(runId)) {
       return;
     }
@@ -1804,11 +1834,27 @@ export class MockEngineService {
       select: { status: true },
     });
 
-    if (!run || run.status !== RunStatus.CANCELING) {
+    if (!run) {
       return;
     }
 
-    await this.finishCanceled(runId);
+    if (run.status === RunStatus.CANCELING) {
+      await this.finishCanceled(runId);
+      return;
+    }
+
+    if (run.status !== RunStatus.RUNNING && run.status !== RunStatus.QUEUED) {
+      return;
+    }
+
+    await prisma.mockRun.update({
+      where: { id: runId },
+      data: {
+        status: RunStatus.FAILED,
+        completedAt: new Date(),
+      },
+    });
+    await this.log(runId, "system", "Run was interrupted because the runtime process stopped. You can start it again with continue or restart.", "ERROR");
   }
 
   private async updateProgress(

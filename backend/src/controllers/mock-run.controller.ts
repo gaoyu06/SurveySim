@@ -11,12 +11,13 @@ export function mockRunControllerFactory(service: MockEngineService) {
       try {
         reply.send(await service.get(request.authUser!, request.params.id));
       } catch (error) {
-        reply.code(404).send({ message: error instanceof Error ? error.message : String(error) });
+        const message = error instanceof Error ? error.message : String(error);
+        reply.code(message === "Mock run not found" ? 404 : 500).send({ message });
       }
     },
     create: async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        reply.send(await service.create(request.authUser!.id, request.body));
+        reply.send(await service.create(request.authUser!, request.body));
       } catch (error) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }

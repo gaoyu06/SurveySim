@@ -151,10 +151,12 @@ export function LlmConfigsPage() {
       />
       <Panel>
         <Table
+          className="llm-configs-table"
           rowKey="id"
           loading={query.isLoading}
           dataSource={query.data ?? []}
           pagination={false}
+          scroll={{ x: "max-content" }}
           columns={[
             { title: t("llm.name"), dataIndex: "name" },
             { title: t("common.owner"), dataIndex: "ownerEmail" },
@@ -174,34 +176,37 @@ export function LlmConfigsPage() {
             },
             {
               title: t("common.actions"),
+              width: 340,
               render: (_, item) => (
-                <Space>
-                  <Button
-                    disabled={!item.isOwnedByCurrentUser}
-                    onClick={() => {
-                      setEditing(item);
-                      form.reset({ ...item, apiKey: item.apiKey });
-                      setOpen(true);
-                    }}
-                  >
-                    {t("common.edit")}
-                  </Button>
-                  <Button
-                    icon={<CheckCircleOutlined />}
-                    disabled={!item.isOwnedByCurrentUser}
-                    onClick={() => handleDefault(item.id)}
-                  >
-                    {t("common.default")}
-                  </Button>
-                  {currentUser?.role === "admin" ? (
-                    <Button loading={publicMutation.isPending && publicMutation.variables?.id === item.id} onClick={() => publicMutation.mutate({ id: item.id, isPublic: !item.isPublic })}>
-                      {item.isPublic ? t("llm.makePrivate") : t("llm.makePublic")}
+                <div className="table-action-scroll">
+                  <Space>
+                    <Button
+                      disabled={!item.isOwnedByCurrentUser}
+                      onClick={() => {
+                        setEditing(item);
+                        form.reset({ ...item, apiKey: item.apiKey });
+                        setOpen(true);
+                      }}
+                    >
+                      {t("common.edit")}
                     </Button>
-                  ) : null}
-                  <Button danger disabled={!item.isOwnedByCurrentUser} onClick={() => handleDelete(item.id)}>
-                    {t("common.delete")}
-                  </Button>
-                </Space>
+                    <Button
+                      icon={<CheckCircleOutlined />}
+                      disabled={!item.isOwnedByCurrentUser}
+                      onClick={() => handleDefault(item.id)}
+                    >
+                      {t("common.default")}
+                    </Button>
+                    {currentUser?.role === "admin" ? (
+                      <Button loading={publicMutation.isPending && publicMutation.variables?.id === item.id} onClick={() => publicMutation.mutate({ id: item.id, isPublic: !item.isPublic })}>
+                        {item.isPublic ? t("llm.makePrivate") : t("llm.makePublic")}
+                      </Button>
+                    ) : null}
+                    <Button danger disabled={!item.isOwnedByCurrentUser} onClick={() => handleDelete(item.id)}>
+                      {t("common.delete")}
+                    </Button>
+                  </Space>
+                </div>
               ),
             },
           ]}

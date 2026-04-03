@@ -1,6 +1,6 @@
-import { CopyOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
+import { CopyOutlined, DeleteOutlined, EyeOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Empty, Form, Input, InputNumber, List, Select, Space, Switch, Tag, Typography } from "antd";
+import { App, Button, Drawer, Empty, Form, Input, InputNumber, List, Select, Space, Switch, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import {
   type ConditionExpression,
@@ -155,6 +155,7 @@ export function ParticipantTemplatesPageV2() {
   const { t } = useI18n();
   const currentUser = authStore((state) => state.user);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [draft, setDraft] = useState<TemplateDraft>(defaultDraft);
   const [onlyOwnData, setOnlyOwnData] = useState(true);
   const [aiPrompt, setAiPrompt] = useState("");
@@ -188,15 +189,50 @@ export function ParticipantTemplatesPageV2() {
     setDraft(toDraft(selectedTemplate));
   }, [selectedTemplate]);
 
+  const openCreateDrawer = () => {
+    setSelectedId(null);
+    setDraft(defaultDraft);
+    setAiPrompt("");
+    setSelectedLlmConfigId(undefined);
+    setAiStreamStage(undefined);
+    setAiGeneratedLines(0);
+    setAiRecordStats({ validated: 0, repaired: 0, skipped: 0 });
+    setAiStreamLogs([]);
+    setDrawerOpen(true);
+  };
+
+  const openTemplateDrawer = (templateId: string) => {
+    setSelectedId(templateId);
+    setAiPrompt("");
+    setSelectedLlmConfigId(undefined);
+    setAiStreamStage(undefined);
+    setAiGeneratedLines(0);
+    setAiRecordStats({ validated: 0, repaired: 0, skipped: 0 });
+    setAiStreamLogs([]);
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setSelectedId(null);
+    setDraft(defaultDraft);
+    setAiPrompt("");
+    setSelectedLlmConfigId(undefined);
+    setAiStreamStage(undefined);
+    setAiGeneratedLines(0);
+    setAiRecordStats({ validated: 0, repaired: 0, skipped: 0 });
+    setAiStreamLogs([]);
+  };
+
   const saveMutation = useMutation({
     mutationFn: () =>
       selectedId
         ? apiClient.put<ParticipantTemplateDto>(`/participant-templates/${selectedId}`, draft)
         : apiClient.post<ParticipantTemplateDto>("/participant-templates", draft),
-    onSuccess: (result) => {
+    onSuccess: () => {
       message.success(selectedId ? t("templates.templateUpdated") : t("templates.templateCreated"));
-      setSelectedId(result.id);
-      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      closeDrawer();
+      void queryClient.invalidateQueries({ queryKey: ["templates"] });
     },
     onError: (error: Error) => message.error(error.message),
   });
@@ -205,9 +241,8 @@ export function ParticipantTemplatesPageV2() {
     mutationFn: (id: string) => apiClient.delete(`/participant-templates/${id}`),
     onSuccess: () => {
       message.success(t("templates.templateDeleted"));
-      setSelectedId(null);
-      setDraft(defaultDraft);
-      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      closeDrawer();
+      void queryClient.invalidateQueries({ queryKey: ["templates"] });
     },
     onError: (error: Error) => message.error(error.message),
   });
@@ -361,26 +396,8 @@ export function ParticipantTemplatesPageV2() {
                 <Switch checked={onlyOwnData} onChange={setOnlyOwnData} />
               </Space>
             ) : null}
-            <Button icon={<PlusOutlined />} onClick={() => { setSelectedId(null); setDraft(defaultDraft); }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
               {t("templates.new")}
-            </Button>
-            <Button
-              icon={<CopyOutlined />}
-              disabled={!selectedId || isReadonlySelection}
-              onClick={async () => {
-                if (!selectedId) return;
-                await apiClient.post(`/participant-templates/${selectedId}/clone`);
-                message.success(t("templates.templateCloned"));
-                queryClient.invalidateQueries({ queryKey: ["templates"] });
-              }}
-            >
-              {t("templates.clone")}
-            </Button>
-            <Button danger icon={<DeleteOutlined />} disabled={!selectedId || isReadonlySelection} loading={deleteMutation.isPending} onClick={() => selectedId && deleteMutation.mutate(selectedId)}>
-              {t("templates.delete")}
-            </Button>
-            <Button type="primary" icon={<SaveOutlined />} disabled={isReadonlySelection} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-              {t("templates.save")}
             </Button>
           </Space>
         }
@@ -391,35 +408,67 @@ export function ParticipantTemplatesPageV2() {
         items={[t("templates.guideStep1"), t("templates.guideStep2"), t("templates.guideStep3")]}
       />
 
-      <div className="workspace-grid" style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}>
-        <Panel>
-          <Typography.Title level={4}>{t("templates.templates")}</Typography.Title>
-          <List
-            locale={{ emptyText: <Empty description={t("templates.noTemplates")} /> }}
-            dataSource={templatesQuery.data ?? []}
-            renderItem={(item) => (
-              <List.Item
-                style={{
-                  cursor: "pointer",
-                  borderRadius: 16,
-                  paddingInline: 12,
-                  background: item.id === selectedId ? "rgba(59,130,246,.12)" : "transparent",
-                  border: item.id === selectedId ? "1px solid rgba(59,130,246,.28)" : "1px solid transparent",
-                }}
-                onClick={() => setSelectedId(item.id)}
-              >
-                <List.Item.Meta
-                  title={item.name}
-                  description={`${t("templates.rulesCount", { count: item.rules.length })}${item.ownerEmail ? ` · ${t("common.owner")}: ${item.ownerEmail}` : ""}`}
-                />
-              </List.Item>
-            )}
-          />
-        </Panel>
+      <Panel>
+        <Typography.Title level={4}>{t("templates.templates")}</Typography.Title>
+        <List
+          locale={{ emptyText: <Empty description={t("templates.noTemplates")} /> }}
+          dataSource={templatesQuery.data ?? []}
+          renderItem={(item) => (
+            <List.Item
+              actions={[
+                <Button key="open" icon={item.isOwnedByCurrentUser ? undefined : <EyeOutlined />} onClick={() => openTemplateDrawer(item.id)}>
+                  {item.isOwnedByCurrentUser ? t("common.edit") : t("common.preview")}
+                </Button>,
+                <Button
+                  key="clone"
+                  icon={<CopyOutlined />}
+                  disabled={!item.isOwnedByCurrentUser}
+                  onClick={async () => {
+                    await apiClient.post(`/participant-templates/${item.id}/clone`);
+                    message.success(t("templates.templateCloned"));
+                    void queryClient.invalidateQueries({ queryKey: ["templates"] });
+                  }}
+                >
+                  {t("templates.clone")}
+                </Button>,
+                <Button key="delete" danger icon={<DeleteOutlined />} disabled={!item.isOwnedByCurrentUser} loading={deleteMutation.isPending && deleteMutation.variables === item.id} onClick={() => deleteMutation.mutate(item.id)}>
+                  {t("templates.delete")}
+                </Button>,
+              ]}
+            >
+              <List.Item.Meta
+                title={item.name}
+                description={
+                  <Space direction="vertical" size={4}>
+                    <Typography.Text type="secondary">{item.description || t("common.none")}</Typography.Text>
+                    <Typography.Text type="secondary">
+                      {t("templates.rulesCount", { count: item.rules.length })}
+                      {item.ownerEmail ? ` · ${t("common.owner")}: ${item.ownerEmail}` : ""}
+                    </Typography.Text>
+                  </Space>
+                }
+              />
+            </List.Item>
+          )}
+        />
+      </Panel>
 
+      <Drawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        width={1280}
+        title={selectedId ? (isReadonlySelection ? `${t("common.preview")} · ${t("templates.title")}` : `${t("common.edit")} · ${t("templates.title")}`) : `${t("templates.new")} · ${t("templates.title")}`}
+        extra={
+          isReadonlySelection ? undefined : (
+            <Button type="primary" icon={<SaveOutlined />} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+              {t("templates.save")}
+            </Button>
+          )
+        }
+      >
         <div className="card-stack">
           <Panel>
-            <Typography.Title level={4}>{t("templates.ruleEditor")}</Typography.Title>
+            <Typography.Title level={4}>{t("templates.aiGenerateAction")}</Typography.Title>
             <Form layout="vertical" disabled={isReadonlySelection}>
               <Form.Item label={<FieldLabel label={t("templates.aiGeneratePrompt")} hint={t("templates.aiGeneratePromptHint")} />}>
                 <Input.TextArea rows={4} value={aiPrompt} placeholder={t("templates.aiGeneratePlaceholder")} onChange={(event) => setAiPrompt(event.target.value)} />
@@ -429,7 +478,7 @@ export function ParticipantTemplatesPageV2() {
                   <Select allowClear placeholder={t("surveys.chooseConfig")} options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.isOwnedByCurrentUser ? item.name : `${item.name} · ${item.ownerEmail}`, value: item.id }))} value={selectedLlmConfigId} onChange={setSelectedLlmConfigId} />
                 </Form.Item>
                 <Form.Item label=" ">
-                  <Button type="primary" loading={generateWithAiMutation.isPending} disabled={!aiPrompt.trim()} onClick={() => generateWithAiMutation.mutate()}>
+                  <Button type="primary" loading={generateWithAiMutation.isPending} disabled={!aiPrompt.trim() || isReadonlySelection} onClick={() => generateWithAiMutation.mutate()}>
                     {t("templates.aiGenerateAction")}
                   </Button>
                 </Form.Item>
@@ -501,7 +550,7 @@ export function ParticipantTemplatesPageV2() {
                 </Form.Item>
                 <Space align="center" style={{ width: "100%", justifyContent: "space-between", marginBottom: 12 }}>
                   <Typography.Text strong>{t("templates.customDimension")}</Typography.Text>
-                  <Button icon={<PlusOutlined />} onClick={addCustomAttribute}>{t("templates.addDimension")}</Button>
+                  <Button icon={<PlusOutlined />} disabled={isReadonlySelection} onClick={addCustomAttribute}>{t("templates.addDimension")}</Button>
                 </Space>
                 <Space direction="vertical" style={{ width: "100%" }} size={10}>
                   {customAttributes.map((attribute, index) => (
@@ -511,7 +560,7 @@ export function ParticipantTemplatesPageV2() {
                           <Typography.Text strong>{attribute.displayName || humanizeParticipantAttributeKey(attribute.key)}</Typography.Text>
                           <div className="subtle-help">{attribute.key}</div>
                         </div>
-                        <Button danger type="text" icon={<DeleteOutlined />} onClick={() => removeCustomAttribute(attribute.key)} />
+                        <Button danger type="text" icon={<DeleteOutlined />} disabled={isReadonlySelection} onClick={() => removeCustomAttribute(attribute.key)} />
                       </Space>
                       <div className="card-stack" style={{ marginTop: 12 }}>
                         <Input addonBefore={t("templates.customAttributeKey")} value={attribute.key} placeholder={`custom_attribute_${index + 1}`} onChange={(event) => updateCustomAttribute(attribute.key, { key: normalizeParticipantAttributeKey(event.target.value) })} />
@@ -547,7 +596,7 @@ export function ParticipantTemplatesPageV2() {
             </Panel>
           </div>
         </div>
-      </div>
+      </Drawer>
     </>
   );
 }

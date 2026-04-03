@@ -144,9 +144,27 @@ h1, h2, h3, h4, .display-title {
   flex: 0 0 auto;
 }
 
+.topbar-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
 .topbar-actions {
   justify-content: flex-end;
   max-width: 100%;
+}
+
+.mobile-nav-trigger {
+  color: var(--text) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(148, 163, 184, 0.14) !important;
+}
+
+.mobile-nav-drawer .ant-drawer-header {
+  display: none;
 }
 
 .topbar-label {
@@ -180,6 +198,11 @@ h1, h2, h3, h4, .display-title {
   align-items: flex-start;
   gap: 16px;
   margin-bottom: 20px;
+}
+
+.page-header-actions {
+  justify-content: flex-end;
+  max-width: 100%;
 }
 
 .page-title {
@@ -288,6 +311,131 @@ h1, h2, h3, h4, .display-title {
   display: grid;
   grid-template-columns: 1fr 1.1fr 1fr;
   gap: 18px;
+}
+
+.run-detail-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.run-detail-main {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.35fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.run-summary-hero {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 1.3fr);
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.run-summary-copy {
+  min-width: 0;
+}
+
+.run-summary-grid,
+.run-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.run-summary-card,
+.run-stage-card {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 14px;
+  min-width: 0;
+}
+
+.run-summary-card__value,
+.run-stage-card__value {
+  display: block;
+  margin-top: 10px;
+  font-size: 20px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.participant-table-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.participant-stage-cell,
+.participant-progress-cell,
+.participant-identity-cell,
+.persona-preview-cell {
+  min-width: 0;
+}
+
+.participant-stage-cell {
+  display: grid;
+  gap: 8px;
+}
+
+.participant-stage-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.participant-stage-tag {
+  margin-inline-end: 0 !important;
+}
+
+.participant-identity-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.participant-identity-tag {
+  margin-inline-end: 0 !important;
+  white-space: normal;
+}
+
+.participant-identity-more {
+  font-size: 12px;
+}
+
+.participant-tooltip-list,
+.persona-preview-tooltip {
+  max-width: 360px;
+  white-space: normal;
+  line-height: 1.6;
+}
+
+.participant-tooltip-list {
+  display: grid;
+  gap: 6px;
+}
+
+.persona-preview-tooltip {
+  display: grid;
+  gap: 8px;
+}
+
+.persona-preview-text {
+  margin-bottom: 0 !important;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.participant-progress-cell .ant-progress {
+  margin-bottom: 4px;
 }
 
 .card-stack {
@@ -437,6 +585,27 @@ h1, h2, h3, h4, .display-title {
 
 .report-row-active > td {
   background: rgba(59, 130, 246, 0.14) !important;
+}
+
+.llm-configs-table .ant-table-container {
+  overflow-x: auto;
+}
+
+.table-action-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.table-action-scroll .ant-space {
+  display: inline-flex;
+  flex-wrap: nowrap;
+}
+
+.table-action-scroll .ant-btn {
+  flex: 0 0 auto;
 }
 
 .survey-stream-log-shell {
@@ -750,7 +919,9 @@ h1, h2, h3, h4, .display-title {
 
 @media (max-width: 1280px) {
   .workspace-grid,
-  .workspace-grid--triple {
+  .workspace-grid--triple,
+  .run-detail-main,
+  .run-summary-hero {
     grid-template-columns: 1fr;
   }
 
@@ -768,10 +939,25 @@ h1, h2, h3, h4, .display-title {
 
   .topbar-actions {
     justify-content: space-between;
+    width: 100%;
   }
 
   .page-title {
     font-size: 28px;
+  }
+
+  .page-wrap {
+    padding: 14px;
+  }
+
+  .page-header,
+  .participant-table-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-header-actions {
+    justify-content: flex-start;
   }
 
   .condition-row {
@@ -785,6 +971,17 @@ h1, h2, h3, h4, .display-title {
   }
 
   .matrix-report-options {
+    grid-template-columns: 1fr;
+  }
+
+  .help-callout,
+  .panel {
+    border-radius: 16px;
+  }
+
+  .help-callout__list,
+  .run-summary-grid,
+  .run-stage-grid {
     grid-template-columns: 1fr;
   }
 }
