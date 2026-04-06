@@ -205,6 +205,17 @@ export const surveySaveInputSchema = z.object({
   schema: surveySchema,
 });
 
+export const surveyAiGenerateInputSchema = z.object({
+  prompt: z.string().min(1),
+  title: z.string().optional(),
+  llmConfigId: z.string().optional(),
+});
+
+export const surveyAiGenerateResultSchema = z.object({
+  schema: surveySchema,
+  extractionNotes: z.array(z.string()).default([]),
+});
+
 export const contentTaskSchema = surveySchema;
 export const contentTaskImportInputSchema = surveyImportInputSchema;
 export const contentTaskDraftSchema = surveyDraftSchema;
@@ -213,6 +224,8 @@ export const contentTaskImportRecordEventSchema = surveyImportRecordEventSchema;
 export const contentTaskImportStreamEventSchema = surveyImportStreamEventSchema;
 export const contentTaskImportRetryRecordInputSchema = surveyImportRetryRecordInputSchema;
 export const contentTaskSaveInputSchema = surveySaveInputSchema;
+export const contentTaskAiGenerateInputSchema = surveyAiGenerateInputSchema;
+export const contentTaskAiGenerateResultSchema = surveyAiGenerateResultSchema;
 
 export type SurveySchemaDto = z.infer<typeof surveySchema>;
 export type SurveyQuestionDto = z.infer<typeof surveyQuestionSchema>;
@@ -221,6 +234,8 @@ export type SurveySaveInput = z.infer<typeof surveySaveInputSchema>;
 export type SurveyImportStreamEvent = z.infer<typeof surveyImportStreamEventSchema>;
 export type SurveyImportJsonlRecord = z.infer<typeof surveyImportJsonlRecordSchema>;
 export type SurveyImportRecordEvent = z.infer<typeof surveyImportRecordEventSchema>;
+export type SurveyAiGenerateInput = z.infer<typeof surveyAiGenerateInputSchema>;
+export type SurveyAiGenerateResult = z.infer<typeof surveyAiGenerateResultSchema>;
 
 export type ContentScenarioType = z.infer<typeof contentScenarioTypeSchema>;
 export type ContentTaskSchemaDto = SurveySchemaDto;
@@ -230,3 +245,5 @@ export type ContentTaskSaveInput = SurveySaveInput;
 export type ContentTaskImportStreamEvent = SurveyImportStreamEvent;
 export type ContentTaskImportJsonlRecord = SurveyImportJsonlRecord;
 export type ContentTaskImportRecordEvent = SurveyImportRecordEvent;
+export type ContentTaskAiGenerateInput = SurveyAiGenerateInput;
+export type ContentTaskAiGenerateResult = SurveyAiGenerateResult;

@@ -4,6 +4,7 @@ export * from "./participant-template-generate-jsonl.task.js";
 export * from "./participant-template-repair-jsonl-record.task.js";
 export * from "./persona-generate.task.js";
 export * from "./survey-extract-jsonl.task.js";
+export * from "./survey-generate.task.js";
 export * from "./survey-repair-answer-record.task.js";
 export * from "./survey-repair-jsonl-record.task.js";
 export * from "./survey-response-generate.task.js";

@@ -61,6 +61,13 @@ export function surveyControllerFactory(service: SurveyService) {
         reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
       }
     },
+    generateWithAi: async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        reply.send(await service.generateWithAi(request.authUser!, request.body));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
+    },
     importDraftStream: async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const body = await resolveImportBody(request);

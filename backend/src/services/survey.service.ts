@@ -3,10 +3,13 @@ import {
   createEmptySurveyDraft,
   ensureSurveySchemaIds,
   finalizeSurveyDraft,
+  surveyAiGenerateInputSchema,
+  surveyAiGenerateResultSchema,
   surveyImportInputSchema,
   surveyImportJsonlRecordSchema,
   surveyImportRetryRecordInputSchema,
   surveySaveInputSchema,
+  type SurveyAiGenerateResult,
   type SurveyDraft,
   type SurveyImportJsonlRecord,
   type SurveyImportRecordEvent,
@@ -19,7 +22,7 @@ import type { AuthUserContext } from "../types/auth.js";
 import { isAdmin, resolveDataScope } from "../utils/access.js";
 import { LlmService } from "./llm/llm.service.js";
 import { UsageLimitService } from "./usage-limit.service.js";
-import { buildSurveyExtractJsonlTask, buildSurveyRepairJsonlRecordTask } from "./ai-tasks/index.js";
+import { buildSurveyExtractJsonlTask, buildSurveyGenerateTask, buildSurveyRepairJsonlRecordTask } from "./ai-tasks/index.js";
 import { toIsoString } from "../utils/serialize.js";
 
 function summarizeRecord(record: SurveyImportJsonlRecord) {
@@ -145,6 +148,33 @@ export class SurveyService {
       throw new Error("Content task draft extraction did not produce a draft");
     }
     return finalDraft;
+  }
+
+  async generateWithAi(user: AuthUserContext, input: unknown): Promise<SurveyDraft> {
+    await this.usageLimitService.consumeOrThrow(user, "content task ai generate");
+
+    const payload = surveyAiGenerateInputSchema.parse(input);
+    const config = payload.llmConfigId
+      ? await this.llmService.getRuntimeConfig(user, payload.llmConfigId)
+      : await this.llmService.getDefaultRuntimeConfig(user.id);
+
+    const generateTask = buildSurveyGenerateTask({
+      prompt: payload.prompt,
+      title: payload.title,
+    });
+
+    const generated = await this.llmService.generateJson<SurveyAiGenerateResult>(
+      config,
+      generateTask.messages,
+      generateTask.fixerPrompt,
+    );
+
+    const parsed = surveyAiGenerateResultSchema.parse(generated);
+    return finalizeSurveyDraft({
+      rawText: payload.prompt,
+      schema: ensureSurveySchemaIds(parsed.schema),
+      extractionNotes: parsed.extractionNotes,
+    }, payload.title);
   }
 
   async *importDraftStream(user: AuthUserContext, input: unknown): AsyncGenerator<SurveyImportStreamEvent> {

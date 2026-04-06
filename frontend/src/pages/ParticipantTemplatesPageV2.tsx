@@ -1,6 +1,6 @@
 import { CopyOutlined, DeleteOutlined, EyeOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Empty, Form, Grid, Input, InputNumber, List, Select, Space, Switch, Tag, Typography } from "antd";
+import { App, Button, Collapse, Drawer, Empty, Form, Grid, Input, InputNumber, List, Select, Space, Switch, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import {
   type ConditionExpression,
@@ -473,6 +473,9 @@ export function ParticipantTemplatesPageV2() {
         <div className="card-stack">
           <Panel>
             <Typography.Title level={4}>{t("templates.aiGenerateAction")}</Typography.Title>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+              {t("templates.quickCreateDescription")}
+            </Typography.Paragraph>
             <Form layout="vertical" disabled={isReadonlySelection}>
               <Form.Item label={<FieldLabel label={t("templates.aiGeneratePrompt")} hint={t("templates.aiGeneratePromptHint")} />}>
                 <Input.TextArea rows={4} value={aiPrompt} placeholder={t("templates.aiGeneratePlaceholder")} onChange={(event) => setAiPrompt(event.target.value)} />
@@ -511,94 +514,128 @@ export function ParticipantTemplatesPageV2() {
             </Form>
           </Panel>
 
-          <div className="workspace-grid templates-editor-grid">
-            <Panel>
-              <Form layout="vertical" disabled={isReadonlySelection}>
-                {isReadonlySelection ? <div className="subtle-help">{t("common.readonlyForeignData")}</div> : null}
+          <Panel>
+            <Typography.Title level={4}>{t("templates.essentialSetup")}</Typography.Title>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+              {t("templates.essentialSetupDescription")}
+            </Typography.Paragraph>
+            <Form layout="vertical" disabled={isReadonlySelection}>
+              {isReadonlySelection ? <div className="subtle-help">{t("common.readonlyForeignData")}</div> : null}
+              <div className="responsive-form-inline">
                 <Form.Item label={<FieldLabel label={t("templates.templateName")} hint={t("templates.templateNameHint")} />}>
                   <Input value={draft.template.name} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, name: event.target.value } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.description")} hint={t("templates.descriptionHint")} />}>
-                  <Input.TextArea rows={2} value={draft.template.description} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, description: event.target.value } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.archetypeLabel")} hint={t("templates.archetypeLabelHint")} />}>
-                  <Input value={draft.template.archetypeProfile?.label} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: event.target.value, seedTags: current.template.archetypeProfile?.seedTags ?? [] } } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.archetypeDescription")} hint={t("templates.archetypeDescriptionHint")} />}>
-                  <Input.TextArea rows={2} value={draft.template.archetypeProfile?.description} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", description: event.target.value, seedTags: current.template.archetypeProfile?.seedTags ?? [] } } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.scenarioContext")} hint={t("templates.scenarioContextHint")} />}>
-                  <Input value={draft.template.archetypeProfile?.scenarioContext} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", scenarioContext: event.target.value, seedTags: current.template.archetypeProfile?.seedTags ?? [] } } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.archetypeTags")} hint={t("templates.archetypeTagsHint")} />}>
-                  <Select mode="tags" tokenSeparators={[","]} value={draft.template.archetypeProfile?.seedTags ?? []} onChange={(values) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", seedTags: values } } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.archetypePrompt")} hint={t("templates.archetypePromptHint")} />}>
-                  <Input.TextArea rows={3} value={draft.template.archetypeProfile?.seedPrompt} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", seedTags: current.template.archetypeProfile?.seedTags ?? [], seedPrompt: event.target.value } } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.randomSeed")} hint={t("templates.randomSeedHint")} />}>
-                  <Input value={draft.template.randomConfig.seed} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, randomConfig: { ...current.template.randomConfig, seed: event.target.value || undefined } } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.randomnessLevel")} hint={t("templates.randomnessLevelHint")} />}>
-                  <Select value={draft.template.randomConfig.randomnessLevel} options={[{ label: "Low", value: "low" }, { label: "Medium", value: "medium" }, { label: "High", value: "high" }]} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, randomConfig: { ...current.template.randomConfig, randomnessLevel: value } } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.noiseProfile")} hint={t("templates.noiseProfileHint")} />}>
-                  <Select value={draft.template.randomConfig.noiseProfile} options={[{ label: "Conservative", value: "conservative" }, { label: "Balanced", value: "balanced" }, { label: "Expressive", value: "expressive" }]} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, randomConfig: { ...current.template.randomConfig, noiseProfile: value } } }))} />
                 </Form.Item>
                 <Form.Item label={<FieldLabel label={t("templates.previewSampleSize")} hint={t("templates.previewSampleSizeHint")} />}>
                   <InputNumber min={10} max={5000} style={{ width: "100%" }} value={draft.template.sampleSizePreview} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, sampleSizePreview: value ?? 300 } }))} />
                 </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.trackedDimensions")} hint={t("templates.trackedDimensionsHint")} />}>
-                  <Select mode="multiple" value={selectedBuiltinKeys} options={visibleBuiltinAttributes.map((attribute) => ({ label: formatAttributeLabel(attribute), value: attribute.key }))} onChange={setBuiltinSelection} />
-                  <div className="subtle-help">{t("templates.dimensionHint")}</div>
-                </Form.Item>
-                <Space align="center" style={{ width: "100%", justifyContent: "space-between", marginBottom: 12 }}>
-                  <Typography.Text strong>{t("templates.customDimension")}</Typography.Text>
-                  <Button icon={<PlusOutlined />} disabled={isReadonlySelection} onClick={addCustomAttribute}>{t("templates.addDimension")}</Button>
-                </Space>
-                <Space direction="vertical" style={{ width: "100%" }} size={10}>
-                  {customAttributes.map((attribute, index) => (
-                    <div key={attribute.key} className="rule-card">
-                      <Space align="start" style={{ width: "100%", justifyContent: "space-between" }}>
-                        <div>
-                          <Typography.Text strong>{attribute.displayName || humanizeParticipantAttributeKey(attribute.key)}</Typography.Text>
-                          <div className="subtle-help">{attribute.key}</div>
-                        </div>
-                        <Button danger type="text" icon={<DeleteOutlined />} disabled={isReadonlySelection} onClick={() => removeCustomAttribute(attribute.key)} />
-                      </Space>
-                      <div className="card-stack" style={{ marginTop: 12 }}>
-                        <Input addonBefore={t("templates.customAttributeKey")} value={attribute.key} placeholder={`custom_attribute_${index + 1}`} onChange={(event) => updateCustomAttribute(attribute.key, { key: normalizeParticipantAttributeKey(event.target.value) })} />
-                        <Input addonBefore={t("templates.customAttributeDisplayName")} value={attribute.displayName} placeholder={t("templates.customAttributeDisplayNamePlaceholder")} onChange={(event) => updateCustomAttribute(attribute.key, { displayName: event.target.value })} />
-                        <Input addonBefore={t("templates.customAttributeDescription")} value={attribute.description} placeholder={t("templates.customAttributeDescriptionPlaceholder")} onChange={(event) => updateCustomAttribute(attribute.key, { description: event.target.value })} />
-                        <Select value={attribute.valueType} options={[{ label: t("templates.attributeTypeSingle"), value: "single" }, { label: t("templates.attributeTypeMulti"), value: "multi" }]} onChange={(value) => updateCustomAttribute(attribute.key, { valueType: value })} />
-                        <Select mode="tags" tokenSeparators={[","]} value={attribute.presetValues.map((item) => item.value)} placeholder={t("templates.presetValuesPlaceholder")} onChange={(values) => updateCustomAttribute(attribute.key, { presetValues: values.map((value) => ({ value: normalizeParticipantAttributeKey(value), label: humanizeParticipantAttributeKey(value) })) })} />
-                      </div>
-                    </div>
-                  ))}
-                  {!customAttributes.length ? <div className="subtle-help">{t("templates.customAttributeEmpty")}</div> : null}
-                </Space>
-              </Form>
-            </Panel>
+              </div>
+              <Form.Item label={<FieldLabel label={t("templates.description")} hint={t("templates.descriptionHint")} />}>
+                <Input.TextArea rows={2} value={draft.template.description} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, description: event.target.value } }))} />
+              </Form.Item>
+              <Form.Item label={<FieldLabel label={t("templates.trackedDimensions")} hint={t("templates.trackedDimensionsHint")} />}>
+                <Select mode="multiple" value={selectedBuiltinKeys} options={visibleBuiltinAttributes.map((attribute) => ({ label: formatAttributeLabel(attribute), value: attribute.key }))} onChange={setBuiltinSelection} />
+                <div className="subtle-help">{t("templates.dimensionHint")}</div>
+              </Form.Item>
+            </Form>
+          </Panel>
 
-            <Panel>
-              <Space size={[8, 8]} wrap style={{ marginBottom: 12 }}>
-                {draft.template.attributes.map((attribute) => (
-                  <Tag key={attribute.key} color={builtinAttributeKeys.has(attribute.key) ? "blue" : "default"}>
-                    {formatAttributeLabel(attribute)}
-                  </Tag>
-                ))}
-                {draft.template.archetypeProfile?.label ? <Tag color="gold">{draft.template.archetypeProfile.label}</Tag> : null}
-                <Tag>{`random:${draft.template.randomConfig.randomnessLevel}`}</Tag>
-                <Tag>{`noise:${draft.template.randomConfig.noiseProfile}`}</Tag>
-              </Space>
-              <RuleBuilderV2
-                value={draft.rules}
-                attributes={draft.template.attributes}
-                disabled={isReadonlySelection}
-                onChange={(rules) => setDraft((current) => ({ ...current, rules }))}
-              />
-            </Panel>
-          </div>
+          <Panel>
+            <Space size={[8, 8]} wrap>
+              {draft.template.attributes.map((attribute) => (
+                <Tag key={attribute.key} color={builtinAttributeKeys.has(attribute.key) ? "blue" : "default"}>
+                  {formatAttributeLabel(attribute)}
+                </Tag>
+              ))}
+              {draft.template.archetypeProfile?.label ? <Tag color="gold">{draft.template.archetypeProfile.label}</Tag> : null}
+              <Tag>{`random:${draft.template.randomConfig.randomnessLevel}`}</Tag>
+              <Tag>{`noise:${draft.template.randomConfig.noiseProfile}`}</Tag>
+            </Space>
+          </Panel>
+
+          <Collapse
+            className="workspace-collapse"
+            items={[
+              {
+                key: "profile",
+                label: t("templates.advancedProfile"),
+                children: (
+                  <Form layout="vertical" disabled={isReadonlySelection}>
+                    <Form.Item label={<FieldLabel label={t("templates.archetypeLabel")} hint={t("templates.archetypeLabelHint")} />}>
+                      <Input value={draft.template.archetypeProfile?.label} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: event.target.value, seedTags: current.template.archetypeProfile?.seedTags ?? [] } } }))} />
+                    </Form.Item>
+                    <Form.Item label={<FieldLabel label={t("templates.archetypeDescription")} hint={t("templates.archetypeDescriptionHint")} />}>
+                      <Input.TextArea rows={2} value={draft.template.archetypeProfile?.description} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", description: event.target.value, seedTags: current.template.archetypeProfile?.seedTags ?? [] } } }))} />
+                    </Form.Item>
+                    <Form.Item label={<FieldLabel label={t("templates.scenarioContext")} hint={t("templates.scenarioContextHint")} />}>
+                      <Input value={draft.template.archetypeProfile?.scenarioContext} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", scenarioContext: event.target.value, seedTags: current.template.archetypeProfile?.seedTags ?? [] } } }))} />
+                    </Form.Item>
+                    <Form.Item label={<FieldLabel label={t("templates.archetypeTags")} hint={t("templates.archetypeTagsHint")} />}>
+                      <Select mode="tags" tokenSeparators={[","]} value={draft.template.archetypeProfile?.seedTags ?? []} onChange={(values) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", seedTags: values } } }))} />
+                    </Form.Item>
+                    <Form.Item label={<FieldLabel label={t("templates.archetypePrompt")} hint={t("templates.archetypePromptHint")} />}>
+                      <Input.TextArea rows={3} value={draft.template.archetypeProfile?.seedPrompt} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, archetypeProfile: { ...current.template.archetypeProfile, label: current.template.archetypeProfile?.label ?? "", seedTags: current.template.archetypeProfile?.seedTags ?? [], seedPrompt: event.target.value } } }))} />
+                    </Form.Item>
+                    <div className="responsive-form-inline">
+                      <Form.Item label={<FieldLabel label={t("templates.randomSeed")} hint={t("templates.randomSeedHint")} />}>
+                        <Input value={draft.template.randomConfig.seed} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, randomConfig: { ...current.template.randomConfig, seed: event.target.value || undefined } } }))} />
+                      </Form.Item>
+                      <Form.Item label={<FieldLabel label={t("templates.randomnessLevel")} hint={t("templates.randomnessLevelHint")} />}>
+                        <Select value={draft.template.randomConfig.randomnessLevel} options={[{ label: "Low", value: "low" }, { label: "Medium", value: "medium" }, { label: "High", value: "high" }]} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, randomConfig: { ...current.template.randomConfig, randomnessLevel: value } } }))} />
+                      </Form.Item>
+                      <Form.Item label={<FieldLabel label={t("templates.noiseProfile")} hint={t("templates.noiseProfileHint")} />}>
+                        <Select value={draft.template.randomConfig.noiseProfile} options={[{ label: "Conservative", value: "conservative" }, { label: "Balanced", value: "balanced" }, { label: "Expressive", value: "expressive" }]} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, randomConfig: { ...current.template.randomConfig, noiseProfile: value } } }))} />
+                      </Form.Item>
+                    </div>
+                  </Form>
+                ),
+              },
+              {
+                key: "attributes",
+                label: t("templates.advancedAttributes"),
+                children: (
+                  <Form layout="vertical" disabled={isReadonlySelection}>
+                    <Space align="center" style={{ width: "100%", justifyContent: "space-between", marginBottom: 12 }}>
+                      <Typography.Text strong>{t("templates.customDimension")}</Typography.Text>
+                      <Button icon={<PlusOutlined />} disabled={isReadonlySelection} onClick={addCustomAttribute}>{t("templates.addDimension")}</Button>
+                    </Space>
+                    <Space direction="vertical" style={{ width: "100%" }} size={10}>
+                      {customAttributes.map((attribute, index) => (
+                        <div key={attribute.key} className="rule-card">
+                          <Space align="start" style={{ width: "100%", justifyContent: "space-between" }}>
+                            <div>
+                              <Typography.Text strong>{attribute.displayName || humanizeParticipantAttributeKey(attribute.key)}</Typography.Text>
+                              <div className="subtle-help">{attribute.key}</div>
+                            </div>
+                            <Button danger type="text" icon={<DeleteOutlined />} disabled={isReadonlySelection} onClick={() => removeCustomAttribute(attribute.key)} />
+                          </Space>
+                          <div className="card-stack" style={{ marginTop: 12 }}>
+                            <Input addonBefore={t("templates.customAttributeKey")} value={attribute.key} placeholder={`custom_attribute_${index + 1}`} onChange={(event) => updateCustomAttribute(attribute.key, { key: normalizeParticipantAttributeKey(event.target.value) })} />
+                            <Input addonBefore={t("templates.customAttributeDisplayName")} value={attribute.displayName} placeholder={t("templates.customAttributeDisplayNamePlaceholder")} onChange={(event) => updateCustomAttribute(attribute.key, { displayName: event.target.value })} />
+                            <Input addonBefore={t("templates.customAttributeDescription")} value={attribute.description} placeholder={t("templates.customAttributeDescriptionPlaceholder")} onChange={(event) => updateCustomAttribute(attribute.key, { description: event.target.value })} />
+                            <Select value={attribute.valueType} options={[{ label: t("templates.attributeTypeSingle"), value: "single" }, { label: t("templates.attributeTypeMulti"), value: "multi" }]} onChange={(value) => updateCustomAttribute(attribute.key, { valueType: value })} />
+                            <Select mode="tags" tokenSeparators={[","]} value={attribute.presetValues.map((item) => item.value)} placeholder={t("templates.presetValuesPlaceholder")} onChange={(values) => updateCustomAttribute(attribute.key, { presetValues: values.map((value) => ({ value: normalizeParticipantAttributeKey(value), label: humanizeParticipantAttributeKey(value) })) })} />
+                          </div>
+                        </div>
+                      ))}
+                      {!customAttributes.length ? <div className="subtle-help">{t("templates.customAttributeEmpty")}</div> : null}
+                    </Space>
+                  </Form>
+                ),
+              },
+              {
+                key: "rules",
+                label: t("templates.advancedRules"),
+                children: (
+                  <RuleBuilderV2
+                    value={draft.rules}
+                    attributes={draft.template.attributes}
+                    disabled={isReadonlySelection}
+                    onChange={(rules) => setDraft((current) => ({ ...current, rules }))}
+                  />
+                ),
+              },
+            ]}
+          />
         </div>
       </Drawer>
     </>
