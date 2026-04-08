@@ -24,6 +24,7 @@ import { LlmService } from "./llm/llm.service.js";
 import { UsageLimitService } from "./usage-limit.service.js";
 import { buildSurveyExtractJsonlTask, buildSurveyGenerateTask, buildSurveyRepairJsonlRecordTask } from "./ai-tasks/index.js";
 import { toIsoString } from "../utils/serialize.js";
+import { toPaginationResult, type ResolvedPagination } from "../utils/pagination.js";
 
 function summarizeRecord(record: SurveyImportJsonlRecord) {
   if (record.recordType === "survey_meta") {
@@ -110,10 +111,19 @@ export class SurveyService {
     );
   }
 
-  async list(user: AuthUserContext, scope?: unknown) {
+  async list(user: AuthUserContext, scope?: unknown, pagination?: ResolvedPagination) {
     const dataScope = resolveDataScope(user, scope);
-    const surveys = dataScope === "all" ? await surveyRepository.listAll() : await surveyRepository.list(user.id);
-    return surveys.map((survey) => ({ ...mapSurvey(survey), isOwnedByCurrentUser: survey.userId === user.id }));
+    if (!pagination) {
+      const surveys = dataScope === "all" ? await surveyRepository.listAll() : await surveyRepository.list(user.id);
+      return surveys.map((survey) => ({ ...mapSurvey(survey), isOwnedByCurrentUser: survey.userId === user.id }));
+    }
+
+    const result = dataScope === "all"
+      ? await surveyRepository.listAllPage(pagination.page, pagination.pageSize)
+      : await surveyRepository.listPage(user.id, pagination.page, pagination.pageSize);
+
+    const items = result.items.map((survey) => ({ ...mapSurvey(survey), isOwnedByCurrentUser: survey.userId === user.id }));
+    return toPaginationResult(items, result.total, pagination);
   }
 
   async get(user: AuthUserContext, id: string) {

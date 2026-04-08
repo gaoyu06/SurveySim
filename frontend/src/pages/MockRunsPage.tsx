@@ -2,7 +2,7 @@ import { DeleteOutlined, ExclamationCircleOutlined, PlayCircleOutlined, PlusOutl
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Collapse, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space, Switch, Table } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Controller, useForm } from "react-hook-form";
 import {
@@ -22,6 +22,14 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { authStore } from "@/stores/auth.store";
 
 type ContentTaskRecord = { id: string; title: string };
+
+type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
 
 const defaultValues: MockRunCreateInput = {
   name: "Batch 01",
@@ -54,6 +62,8 @@ export function MockRunsPage() {
   const [isCreateDrawerOpen, setIsCreateDrawerOpen] = useState(false);
   const [startChoiceRun, setStartChoiceRun] = useState<MockRunDto | null>(null);
   const [onlyOwnData, setOnlyOwnData] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const form = useForm<MockRunCreateInput>({
     resolver: zodResolver(mockRunCreateInputSchema),
     defaultValues,
@@ -73,11 +83,24 @@ export function MockRunsPage() {
       queryFn: () => apiClient.get<LlmProviderConfigDto[]>("/llm-configs"),
     }),
     useQuery({
-      queryKey: ["mock-runs", currentUser?.role, onlyOwnData],
-      queryFn: () => apiClient.get<MockRunDto[]>(`/mock-runs${currentUser?.role === "admin" && !onlyOwnData ? "?scope=all" : ""}`),
+      queryKey: ["mock-runs", currentUser?.role, onlyOwnData, page, pageSize],
+      queryFn: () => {
+        const params = new URLSearchParams();
+        if (currentUser?.role === "admin" && !onlyOwnData) {
+          params.set("scope", "all");
+        }
+        params.set("page", String(page));
+        params.set("pageSize", String(pageSize));
+        const query = params.toString();
+        return apiClient.get<PaginatedResponse<MockRunDto>>(`/mock-runs${query ? `?${query}` : ""}`);
+      },
       refetchInterval: 4000,
     }),
   ];
+
+  useEffect(() => {
+    setPage(1);
+  }, [onlyOwnData]);
 
   const runtimeSettingsQuery = useQuery({
     queryKey: ["system-runtime-settings"],
@@ -226,8 +249,22 @@ export function MockRunsPage() {
         <Table
           size="small"
           rowKey="id"
-          dataSource={runsQuery.data ?? []}
-          pagination={false}
+          dataSource={runsQuery.data?.items ?? []}
+          pagination={{
+            current: page,
+            pageSize,
+            total: runsQuery.data?.total ?? 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50],
+            onChange: (nextPage, nextPageSize) => {
+              if (nextPageSize !== pageSize) {
+                setPage(1);
+                setPageSize(nextPageSize);
+                return;
+              }
+              setPage(nextPage);
+            },
+          }}
           scroll={{ x: 920 }}
           columns={[
             { title: t("mockRuns.run"), dataIndex: "name" },

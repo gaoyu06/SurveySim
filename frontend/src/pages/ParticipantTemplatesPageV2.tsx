@@ -36,6 +36,14 @@ type TemplateDraft = {
   rules: ParticipantRuleInput[];
 };
 
+type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 const builtinAttributes = getBuiltinParticipantAttributes();
 const builtinAttributeKeys = new Set(builtinAttributes.map((attribute) => attribute.key));
 const visibleBuiltinAttributes = builtinAttributes.filter((attribute) => attribute.key !== "noise");
@@ -165,10 +173,21 @@ export function ParticipantTemplatesPageV2() {
   const [aiGeneratedLines, setAiGeneratedLines] = useState(0);
   const [aiRecordStats, setAiRecordStats] = useState({ validated: 0, repaired: 0, skipped: 0 });
   const [aiStreamLogs, setAiStreamLogs] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const templatesQuery = useQuery({
-    queryKey: ["templates", currentUser?.role, onlyOwnData],
-    queryFn: () => apiClient.get<ParticipantTemplateDto[]>(`/participant-templates${currentUser?.role === "admin" && !onlyOwnData ? "?scope=all" : ""}`),
+    queryKey: ["templates", currentUser?.role, onlyOwnData, page, pageSize],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (currentUser?.role === "admin" && !onlyOwnData) {
+        params.set("scope", "all");
+      }
+      params.set("page", String(page));
+      params.set("pageSize", String(pageSize));
+      const query = params.toString();
+      return apiClient.get<PaginatedResponse<ParticipantTemplateDto>>(`/participant-templates${query ? `?${query}` : ""}`);
+    },
   });
 
   const llmConfigsQuery = useQuery({
@@ -177,10 +196,14 @@ export function ParticipantTemplatesPageV2() {
   });
 
   const selectedTemplate = useMemo(
-    () => templatesQuery.data?.find((item) => item.id === selectedId) ?? null,
-    [templatesQuery.data, selectedId],
+    () => templatesQuery.data?.items.find((item) => item.id === selectedId) ?? null,
+    [templatesQuery.data?.items, selectedId],
   );
   const isReadonlySelection = Boolean(selectedId && selectedTemplate && selectedTemplate.isOwnedByCurrentUser === false);
+
+  useEffect(() => {
+    setPage(1);
+  }, [onlyOwnData]);
 
   useEffect(() => {
     if (!selectedTemplate) {
@@ -407,7 +430,22 @@ export function ParticipantTemplatesPageV2() {
         <Typography.Title level={4}>{t("templates.templates")}</Typography.Title>
         <List
           locale={{ emptyText: <Empty description={t("templates.noTemplates")} /> }}
-          dataSource={templatesQuery.data ?? []}
+          dataSource={templatesQuery.data?.items ?? []}
+          pagination={{
+            current: page,
+            pageSize,
+            total: templatesQuery.data?.total ?? 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50],
+            onChange: (nextPage, nextPageSize) => {
+              if (nextPageSize !== pageSize) {
+                setPage(1);
+                setPageSize(nextPageSize);
+                return;
+              }
+              setPage(nextPage);
+            },
+          }}
           renderItem={(item) => (
             <List.Item
               className="responsive-list-item"

@@ -29,6 +29,7 @@ import {
   buildSurveyResponseSingleAnswerTask,
 } from "../ai-tasks/index.js";
 import { toIsoString } from "../../utils/serialize.js";
+import { toPaginationResult, type ResolvedPagination } from "../../utils/pagination.js";
 
 interface RunContext {
   cancelRequested: boolean;
@@ -871,19 +872,36 @@ export class MockEngineService {
   private readonly usageLimitService = new UsageLimitService();
   private readonly systemConfigService = new SystemConfigService();
   private readonly activeRuns = new Map<string, RunContext>();
+  private readonly recoveringRuns = new Set<string>();
 
-  async list(user: AuthUserContext, scope?: unknown) {
+  constructor() {
+    void this.recoverActiveRunsAtBoot().catch(() => undefined);
+  }
+
+  async list(user: AuthUserContext, scope?: unknown, pagination?: ResolvedPagination) {
     const dataScope = resolveDataScope(user, scope);
     const where = dataScope === "all" ? {} : { userId: user.id };
-    const runs = await prisma.mockRun.findMany({ where, include: { user: true }, orderBy: { createdAt: "desc" } });
-    await Promise.all(
-      runs
-        .filter((run) => activeRunStatuses.has(run.status) && !this.activeRuns.has(run.id))
-        .map((run) => this.reconcileOrphanedActiveRun(run.id)),
-    );
 
-    const refreshedRuns = await prisma.mockRun.findMany({ where, include: { user: true }, orderBy: { createdAt: "desc" } });
-    return refreshedRuns.map((run) => ({ ...mapRun(run), isOwnedByCurrentUser: run.userId === user.id }));
+    await this.recoverOrphanedActiveRuns(where);
+
+    if (!pagination) {
+      const runs = await prisma.mockRun.findMany({ where, include: { user: true }, orderBy: { createdAt: "desc" } });
+      return runs.map((run) => ({ ...mapRun(run), isOwnedByCurrentUser: run.userId === user.id }));
+    }
+
+    const [runs, total] = await prisma.$transaction([
+      prisma.mockRun.findMany({
+        where,
+        include: { user: true },
+        orderBy: { createdAt: "desc" },
+        skip: pagination.skip,
+        take: pagination.pageSize,
+      }),
+      prisma.mockRun.count({ where }),
+    ]);
+
+    const items = runs.map((run) => ({ ...mapRun(run), isOwnedByCurrentUser: run.userId === user.id }));
+    return toPaginationResult(items, total, pagination);
   }
 
   async get(user: AuthUserContext, runId: string) {
@@ -1824,37 +1842,63 @@ export class MockEngineService {
     await this.log(runId, "system", "Run canceled", "WARN");
   }
 
-  private async reconcileOrphanedActiveRun(runId: string) {
-    if (this.activeRuns.has(runId)) {
-      return;
-    }
+  private async recoverActiveRunsAtBoot() {
+    await this.recoverOrphanedActiveRuns({});
+  }
 
-    const run = await prisma.mockRun.findUnique({
-      where: { id: runId },
-      select: { status: true },
-    });
-
-    if (!run) {
-      return;
-    }
-
-    if (run.status === RunStatus.CANCELING) {
-      await this.finishCanceled(runId);
-      return;
-    }
-
-    if (run.status !== RunStatus.RUNNING && run.status !== RunStatus.QUEUED) {
-      return;
-    }
-
-    await prisma.mockRun.update({
-      where: { id: runId },
-      data: {
-        status: RunStatus.FAILED,
-        completedAt: new Date(),
+  private async recoverOrphanedActiveRuns(where: Prisma.MockRunWhereInput) {
+    const runs = await prisma.mockRun.findMany({
+      where: {
+        ...where,
+        status: { in: [RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.CANCELING] },
       },
+      select: { id: true },
     });
-    await this.log(runId, "system", "Run was interrupted because the runtime process stopped. You can start it again with continue or restart.", "ERROR");
+
+    await Promise.all(runs.map((run) => this.reconcileOrphanedActiveRun(run.id).catch(() => undefined)));
+  }
+
+  private async reconcileOrphanedActiveRun(runId: string) {
+    if (this.activeRuns.has(runId) || this.recoveringRuns.has(runId)) {
+      return;
+    }
+    this.recoveringRuns.add(runId);
+
+    try {
+      const run = await prisma.mockRun.findUnique({
+        where: { id: runId },
+        select: { status: true, userId: true },
+      });
+
+      if (!run) {
+        return;
+      }
+
+      if (run.status === RunStatus.CANCELING) {
+        await this.finishCanceled(runId);
+        return;
+      }
+
+      if (run.status !== RunStatus.RUNNING && run.status !== RunStatus.QUEUED) {
+        return;
+      }
+
+      await prisma.mockRun.update({
+        where: { id: runId },
+        data: {
+          status: RunStatus.QUEUED,
+          completedAt: null,
+          canceledAt: null,
+        },
+      });
+
+      const context = { cancelRequested: false, abortController: new AbortController() };
+      this.activeRuns.set(runId, context);
+      await this.log(runId, "system", "Run resumed automatically after runtime restart", "WARN");
+      void this.executeRun(run.userId, runId, context, undefined, "continue");
+    } finally {
+      this.recoveringRuns.delete(runId);
+    }
   }
 
   private async updateProgress(

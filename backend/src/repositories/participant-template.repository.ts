@@ -2,6 +2,11 @@ import { prisma } from "../lib/db.js";
 import { toJson } from "../lib/json.js";
 import type { ParticipantRuleInput, ParticipantTemplateInput } from "@surveysim/shared";
 
+const includeTemplateRelations = {
+  user: true,
+  rules: { orderBy: [{ priority: "desc" as const }, { createdAt: "asc" as const }] },
+};
+
 function serializeTemplateDimensions(input: ParticipantTemplateInput) {
   return {
     version: 2,
@@ -15,26 +20,53 @@ export const participantTemplateRepository = {
   list(userId: string) {
     return prisma.participantTemplate.findMany({
       where: { userId },
-      include: { user: true, rules: { orderBy: [{ priority: "desc" }, { createdAt: "asc" }] } },
+      include: includeTemplateRelations,
       orderBy: { updatedAt: "desc" },
     });
   },
   listAll() {
     return prisma.participantTemplate.findMany({
-      include: { user: true, rules: { orderBy: [{ priority: "desc" }, { createdAt: "asc" }] } },
+      include: includeTemplateRelations,
       orderBy: { updatedAt: "desc" },
     });
+  },
+  async listPage(userId: string, page: number, pageSize: number) {
+    const skip = (page - 1) * pageSize;
+    const [items, total] = await prisma.$transaction([
+      prisma.participantTemplate.findMany({
+        where: { userId },
+        include: includeTemplateRelations,
+        orderBy: { updatedAt: "desc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.participantTemplate.count({ where: { userId } }),
+    ]);
+    return { items, total };
+  },
+  async listAllPage(page: number, pageSize: number) {
+    const skip = (page - 1) * pageSize;
+    const [items, total] = await prisma.$transaction([
+      prisma.participantTemplate.findMany({
+        include: includeTemplateRelations,
+        orderBy: { updatedAt: "desc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.participantTemplate.count(),
+    ]);
+    return { items, total };
   },
   getById(userId: string, id: string) {
     return prisma.participantTemplate.findFirst({
       where: { userId, id },
-      include: { user: true, rules: { orderBy: [{ priority: "desc" }, { createdAt: "asc" }] } },
+      include: includeTemplateRelations,
     });
   },
   getAnyById(id: string) {
     return prisma.participantTemplate.findUnique({
       where: { id },
-      include: { user: true, rules: { orderBy: [{ priority: "desc" }, { createdAt: "asc" }] } },
+      include: includeTemplateRelations,
     });
   },
   async create(userId: string, input: ParticipantTemplateInput, rules: ParticipantRuleInput[]) {

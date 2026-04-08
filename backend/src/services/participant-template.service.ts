@@ -25,6 +25,7 @@ import { LlmService } from "./llm/llm.service.js";
 import { UsageLimitService } from "./usage-limit.service.js";
 import { buildParticipantTemplateGenerateJsonlTask } from "./ai-tasks/participant-template-generate-jsonl.task.js";
 import { buildParticipantTemplateRepairJsonlRecordTask } from "./ai-tasks/participant-template-repair-jsonl-record.task.js";
+import { toPaginationResult, type ResolvedPagination } from "../utils/pagination.js";
 
 type StoredTemplateDimensions =
   | Array<string | Partial<ParticipantAttributeDefinitionDto>>
@@ -153,10 +154,20 @@ export class ParticipantTemplateService {
     throw new Error(`Template rules conflict. Please fix the following issues before saving:\n${details}`);
   }
 
-  async list(user: AuthUserContext, scope?: unknown) {
+  async list(user: AuthUserContext, scope?: unknown, pagination?: ResolvedPagination) {
     const dataScope = resolveDataScope(user, scope);
-    const templates = dataScope === "all" ? await participantTemplateRepository.listAll() : await participantTemplateRepository.list(user.id);
-    return templates.map((template) => ({ ...mapTemplate(template), isOwnedByCurrentUser: template.userId === user.id }));
+
+    if (!pagination) {
+      const templates = dataScope === "all" ? await participantTemplateRepository.listAll() : await participantTemplateRepository.list(user.id);
+      return templates.map((template) => ({ ...mapTemplate(template), isOwnedByCurrentUser: template.userId === user.id }));
+    }
+
+    const result = dataScope === "all"
+      ? await participantTemplateRepository.listAllPage(pagination.page, pagination.pageSize)
+      : await participantTemplateRepository.listPage(user.id, pagination.page, pagination.pageSize);
+
+    const items = result.items.map((template) => ({ ...mapTemplate(template), isOwnedByCurrentUser: template.userId === user.id }));
+    return toPaginationResult(items, result.total, pagination);
   }
 
   async get(user: AuthUserContext | string, id: string) {

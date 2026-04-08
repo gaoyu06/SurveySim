@@ -84,6 +84,33 @@ export const surveyRepository = {
       orderBy: { updatedAt: "desc" },
     });
   },
+  async listPage(userId: string, page: number, pageSize: number) {
+    const skip = (page - 1) * pageSize;
+    const [items, total] = await prisma.$transaction([
+      prisma.survey.findMany({
+        where: { userId },
+        include: includeSurveyRelations,
+        orderBy: { updatedAt: "desc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.survey.count({ where: { userId } }),
+    ]);
+    return { items, total };
+  },
+  async listAllPage(page: number, pageSize: number) {
+    const skip = (page - 1) * pageSize;
+    const [items, total] = await prisma.$transaction([
+      prisma.survey.findMany({
+        include: includeSurveyRelations,
+        orderBy: { updatedAt: "desc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.survey.count(),
+    ]);
+    return { items, total };
+  },
   getById(userId: string, id: string) {
     return prisma.survey.findFirst({
       where: { userId, id },

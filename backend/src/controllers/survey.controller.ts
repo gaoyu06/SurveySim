@@ -6,6 +6,7 @@ import { prisma } from "../lib/db.js";
 import path from "node:path";
 import { env } from "../config/env.js";
 import { ensureDir } from "../utils/fs.js";
+import { resolvePagination } from "../utils/pagination.js";
 import { parseImportDocument } from "../services/document-import.service.js";
 
 const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
@@ -63,8 +64,13 @@ async function resolveImportBody(request: FastifyRequest) {
 
 export function surveyControllerFactory(service: SurveyService) {
   return {
-    list: async (request: FastifyRequest<{ Querystring: { scope?: string } }>, reply: FastifyReply) => {
-      reply.send(await service.list(request.authUser!, request.query.scope));
+    list: async (request: FastifyRequest<{ Querystring: { scope?: string; page?: string | number; pageSize?: string | number } }>, reply: FastifyReply) => {
+      try {
+        const pagination = resolvePagination({ page: request.query.page, pageSize: request.query.pageSize });
+        reply.send(await service.list(request.authUser!, request.query.scope, pagination));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
     },
     get: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {

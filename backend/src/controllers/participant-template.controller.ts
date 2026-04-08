@@ -1,10 +1,16 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { ParticipantTemplateService } from "../services/participant-template.service.js";
+import { resolvePagination } from "../utils/pagination.js";
 
 export function participantTemplateControllerFactory(service: ParticipantTemplateService) {
   return {
-    list: async (request: FastifyRequest<{ Querystring: { scope?: string } }>, reply: FastifyReply) => {
-      reply.send(await service.list(request.authUser!, request.query.scope));
+    list: async (request: FastifyRequest<{ Querystring: { scope?: string; page?: string | number; pageSize?: string | number } }>, reply: FastifyReply) => {
+      try {
+        const pagination = resolvePagination({ page: request.query.page, pageSize: request.query.pageSize });
+        reply.send(await service.list(request.authUser!, request.query.scope, pagination));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
     },
     get: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {

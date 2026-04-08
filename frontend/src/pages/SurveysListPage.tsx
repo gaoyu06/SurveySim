@@ -1,7 +1,7 @@
 import { DeleteOutlined, ExclamationCircleOutlined, EyeOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Drawer, Empty, Grid, List, Space, Switch, Typography } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SurveySchemaDto } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
@@ -23,6 +23,14 @@ type SurveyRecord = {
   createdAt: string;
 };
 
+type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export function SurveysListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -32,6 +40,8 @@ export function SurveysListPage() {
   const currentUser = authStore((state) => state.user);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [onlyOwnData, setOnlyOwnData] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const draft = surveyImportStore((state) => state.draft);
   const editingSurveyId = surveyImportStore((state) => state.editingSurveyId);
@@ -42,9 +52,22 @@ export function SurveysListPage() {
   const resetDraft = surveyImportStore((state) => state.resetDraft);
 
   const surveysQuery = useQuery({
-    queryKey: ["content-tasks", currentUser?.role, onlyOwnData],
-    queryFn: () => apiClient.get<SurveyRecord[]>(`/content-tasks${currentUser?.role === "admin" && !onlyOwnData ? "?scope=all" : ""}`),
+    queryKey: ["content-tasks", currentUser?.role, onlyOwnData, page, pageSize],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (currentUser?.role === "admin" && !onlyOwnData) {
+        params.set("scope", "all");
+      }
+      params.set("page", String(page));
+      params.set("pageSize", String(pageSize));
+      const query = params.toString();
+      return apiClient.get<PaginatedResponse<SurveyRecord>>(`/content-tasks${query ? `?${query}` : ""}`);
+    },
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [onlyOwnData]);
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -142,7 +165,22 @@ export function SurveysListPage() {
         <Typography.Title level={4}>{t("surveys.savedSurveys")}</Typography.Title>
         <List
           locale={{ emptyText: <Empty description={t("surveys.noSurveys")} /> }}
-          dataSource={surveysQuery.data ?? []}
+          dataSource={surveysQuery.data?.items ?? []}
+          pagination={{
+            current: page,
+            pageSize,
+            total: surveysQuery.data?.total ?? 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50],
+            onChange: (nextPage, nextPageSize) => {
+              if (nextPageSize !== pageSize) {
+                setPage(1);
+                setPageSize(nextPageSize);
+                return;
+              }
+              setPage(nextPage);
+            },
+          }}
           renderItem={(item) => (
             <List.Item
               className="responsive-list-item"
