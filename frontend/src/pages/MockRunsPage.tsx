@@ -1,7 +1,7 @@
 import { DeleteOutlined, ExclamationCircleOutlined, PlayCircleOutlined, PlusOutlined, StopOutlined } from "@ant-design/icons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space, Switch, Table, Typography } from "antd";
+import { App, Button, Collapse, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space, Switch, Table } from "antd";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Controller, useForm } from "react-hook-form";
@@ -16,7 +16,7 @@ import {
   type SystemRuntimeSettingsDto,
 } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
-import { FieldLabel, HelpCallout } from "@/components/Help";
+import { FieldLabel } from "@/components/Help";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { useI18n } from "@/i18n/I18nProvider";
 import { authStore } from "@/stores/auth.store";
@@ -222,11 +222,6 @@ export function MockRunsPage() {
           </Space>
         }
       />
-      <HelpCallout
-        title={t("mockRuns.guideTitle")}
-        description={t("mockRuns.guideDescription")}
-        items={[t("mockRuns.guideStep1"), t("mockRuns.guideStep2"), t("mockRuns.guideStep3")]}
-      />
       <Panel>
         <Table
           size="small"
@@ -279,11 +274,6 @@ export function MockRunsPage() {
       <Drawer title={t("mockRuns.createRunDrawerTitle")} width={screens.md ? 560 : "100%"} open={isCreateDrawerOpen} onClose={() => setIsCreateDrawerOpen(false)}>
         <form onSubmit={form.handleSubmit(submit)} noValidate>
           <Form layout="vertical" component={false}>
-            <HelpCallout
-              title={t("mockRuns.drawerGuideTitle")}
-              description={t("mockRuns.drawerGuideDescription")}
-              items={[t("mockRuns.drawerGuideStep1"), t("mockRuns.drawerGuideStep2"), t("mockRuns.drawerGuideStep3")]}
-            />
             <Form.Item label={<FieldLabel label={t("mockRuns.runName")} hint={t("mockRuns.runNameHint")} />} validateStatus={form.formState.errors.name ? "error" : ""} help={form.formState.errors.name?.message}>
               <Controller name="name" control={form.control} render={({ field }) => <Input {...field} value={field.value ?? ""} />} />
             </Form.Item>
@@ -305,53 +295,66 @@ export function MockRunsPage() {
                 )}
               />
             </Form.Item>
-            <Form.Item label={<FieldLabel label={t("mockRuns.modelConfig")} hint={t("mockRuns.llmConfigHint")} />} validateStatus={form.formState.errors.llmConfigId ? "error" : ""} help={form.formState.errors.llmConfigId?.message}>
-              <Controller
-                name="llmConfigId"
-                control={form.control}
-                render={({ field }) => (
-                  <Select options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.isOwnedByCurrentUser ? item.name : `${item.name} · ${item.ownerEmail}`, value: item.id }))} value={field.value} onChange={field.onChange} />
-                )}
-              />
-            </Form.Item>
             <Form.Item label={<FieldLabel label={t("mockRuns.participantCount")} hint={t("mockRuns.participantCountHint")} />} validateStatus={form.formState.errors.participantCount ? "error" : ""} help={form.formState.errors.participantCount?.message}>
               <Controller name="participantCount" control={form.control} render={({ field }) => <InputNumber min={1} max={1000} style={{ width: "100%" }} {...field} value={field.value} />} />
             </Form.Item>
-            <Form.Item label={<FieldLabel label={t("mockRuns.concurrency")} hint={t("mockRuns.concurrencyHint")} />} validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
-              <Controller
-                name="concurrency"
-                control={form.control}
-                render={({ field }) => (
-                  <InputNumber
-                    min={1}
-                    max={maxAllowedConcurrency}
-                    style={{ width: "100%" }}
-                    {...field}
-                    value={field.value}
-                    onChange={(value) => field.onChange(Math.min(value ?? runtimeDefaultConcurrency, maxAllowedConcurrency))}
-                  />
-                )}
-              />
-            </Form.Item>
-            {currentUser?.role !== "admin" ? <div className="subtle-help">{t("mockRuns.concurrencyLimitHint", { default: runtimeDefaultConcurrency, max: maxAllowedConcurrency })}</div> : null}
-            <Form.Item label={<FieldLabel label={t("mockRuns.extraSystemPrompt")} hint={t("mockRuns.extraSystemPromptHint")} />}>
-              <Controller name="extraSystemPrompt" control={form.control} render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />} />
-            </Form.Item>
-            <Form.Item label={<FieldLabel label={t("mockRuns.extraRespondentPrompt")} hint={t("mockRuns.extraRespondentPromptHint")} />}>
-              <Controller name="extraRespondentPrompt" control={form.control} render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />} />
-            </Form.Item>
-            <Form.Item>
-              <Space>
-                <Controller name="reuseIdentity" control={form.control} render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />} />
-                <FieldLabel label={t("mockRuns.reuseIdentity")} hint={t("mockRuns.reuseIdentityHint")} />
-              </Space>
-            </Form.Item>
-            <Form.Item>
-              <Space>
-                <Controller name="reusePersonaPrompt" control={form.control} render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />} />
-                <FieldLabel label={t("mockRuns.reusePersonaPrompt")} hint={t("mockRuns.reusePersonaHint")} />
-              </Space>
-            </Form.Item>
+            <Collapse
+              className="workspace-collapse"
+              items={[
+                {
+                  key: "advanced-settings",
+                  label: t("common.moreSettings"),
+                  children: (
+                    <>
+                      <Form.Item label={<FieldLabel label={t("mockRuns.modelConfig")} hint={t("mockRuns.llmConfigHint")} />} validateStatus={form.formState.errors.llmConfigId ? "error" : ""} help={form.formState.errors.llmConfigId?.message}>
+                        <Controller
+                          name="llmConfigId"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Select options={(llmConfigsQuery.data ?? []).map((item) => ({ label: item.isOwnedByCurrentUser ? item.name : `${item.name} · ${item.ownerEmail}`, value: item.id }))} value={field.value} onChange={field.onChange} />
+                          )}
+                        />
+                      </Form.Item>
+                      <Form.Item label={<FieldLabel label={t("mockRuns.concurrency")} hint={t("mockRuns.concurrencyHint")} />} validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
+                        <Controller
+                          name="concurrency"
+                          control={form.control}
+                          render={({ field }) => (
+                            <InputNumber
+                              min={1}
+                              max={maxAllowedConcurrency}
+                              style={{ width: "100%" }}
+                              {...field}
+                              value={field.value}
+                              onChange={(value) => field.onChange(Math.min(value ?? runtimeDefaultConcurrency, maxAllowedConcurrency))}
+                            />
+                          )}
+                        />
+                      </Form.Item>
+                      {currentUser?.role !== "admin" ? <div className="subtle-help">{t("mockRuns.concurrencyLimitHint", { default: runtimeDefaultConcurrency, max: maxAllowedConcurrency })}</div> : null}
+                      <Form.Item label={<FieldLabel label={t("mockRuns.extraSystemPrompt")} hint={t("mockRuns.extraSystemPromptHint")} />}>
+                        <Controller name="extraSystemPrompt" control={form.control} render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />} />
+                      </Form.Item>
+                      <Form.Item label={<FieldLabel label={t("mockRuns.extraRespondentPrompt")} hint={t("mockRuns.extraRespondentPromptHint")} />}>
+                        <Controller name="extraRespondentPrompt" control={form.control} render={({ field }) => <Input.TextArea rows={3} {...field} value={field.value ?? ""} />} />
+                      </Form.Item>
+                      <Form.Item>
+                        <Space>
+                          <Controller name="reuseIdentity" control={form.control} render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />} />
+                          <FieldLabel label={t("mockRuns.reuseIdentity")} hint={t("mockRuns.reuseIdentityHint")} />
+                        </Space>
+                      </Form.Item>
+                      <Form.Item style={{ marginBottom: 0 }}>
+                        <Space>
+                          <Controller name="reusePersonaPrompt" control={form.control} render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />} />
+                          <FieldLabel label={t("mockRuns.reusePersonaPrompt")} hint={t("mockRuns.reusePersonaHint")} />
+                        </Space>
+                      </Form.Item>
+                    </>
+                  ),
+                },
+              ]}
+            />
             <Button type="primary" htmlType="submit" loading={createMutation.isPending}>
               {t("mockRuns.createRun")}
             </Button>
@@ -366,12 +369,10 @@ export function MockRunsPage() {
         footer={null}
       >
         <Space direction="vertical" style={{ width: "100%" }}>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            {t("mockRuns.startModeDescription")}
-          </Typography.Paragraph>
           {mockRunStartModeSchema.options.map((mode) => (
             <Button
               key={mode}
+              type={mode === "continue" ? "primary" : "default"}
               block
               onClick={async () => {
                 if (!startChoiceRun) return;

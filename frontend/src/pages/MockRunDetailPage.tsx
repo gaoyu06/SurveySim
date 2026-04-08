@@ -354,9 +354,6 @@ export function MockRunDetailPage() {
               <Typography.Title level={screens.md ? 2 : 3} style={{ marginTop: 8, marginBottom: 8 }}>
                 {percent}% · {runQuery.data ? t(`status.${runQuery.data.status}`) : "--"}
               </Typography.Title>
-              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                {t("mockRunDetail.personaPreviewHint")}
-              </Typography.Paragraph>
             </div>
             <div className="run-summary-grid">
               {overviewCards.map(([label, value]) => (
@@ -409,9 +406,6 @@ export function MockRunDetailPage() {
                 <Typography.Title level={4} style={{ marginBottom: 4 }}>
                   {t("mockRunDetail.participants")}
                 </Typography.Title>
-                <Typography.Text type="secondary">
-                  {t("mockRunDetail.personaPreviewHint")}
-                </Typography.Text>
               </div>
               <Tag color="blue">{`${selectedParticipantIds.length}/${participants.length}`}</Tag>
             </div>
@@ -563,9 +557,6 @@ export function MockRunDetailPage() {
 
       <Modal open={startModeModalOpen} title={t("mockRuns.startModeTitle")} footer={null} onCancel={() => setStartModeModalOpen(false)}>
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
-          <Typography.Paragraph style={{ marginBottom: 0 }}>
-            {t("mockRuns.startModeDescription")}
-          </Typography.Paragraph>
           <Space style={{ width: "100%", justifyContent: "flex-end" }} wrap>
             <Button onClick={() => setStartModeModalOpen(false)}>
               {t("common.cancel")}
@@ -609,11 +600,8 @@ export function MockRunDetailPage() {
         confirmLoading={appendMutation.isPending}
       >
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            {t("mockRuns.appendParticipantsDescription")}
-          </Typography.Paragraph>
           <Form layout="vertical">
-            <Form.Item label={t("mockRuns.additionalCount")} extra={t("mockRuns.additionalCountHint")}>
+            <Form.Item label={t("mockRuns.additionalCount")}>
               <InputNumber min={1} max={1000} style={{ width: "100%" }} value={additionalCount} onChange={(value) => setAdditionalCount(value ?? 1)} />
             </Form.Item>
           </Form>

@@ -32,6 +32,7 @@ export const messages: Record<AppLocale, Record<string, string>> = {
     "common.owner": "所属账号",
     "common.navigation": "打开导航",
     "common.readonlyForeignData": "当前查看的是其他账号的数据，已切换为只读模式。",
+    "common.moreSettings": "更多设置",
 
     "nav.dashboard": "仪表盘",
     "nav.llmConfigs": "模型配置",
@@ -78,6 +79,7 @@ export const messages: Record<AppLocale, Record<string, string>> = {
     "dashboard.runDesc": "参与者 {{participants}} · 已完成答卷 {{responses}}",
     "dashboard.surveyDesc": "{{sections}} 个分段",
     "dashboard.quickActions": "快捷入口",
+    "dashboard.quickActionsDescription": "把最常用的下一步放进一张更醒目的卡片里：先创建或导入问卷，再补参与者模板，或者直接进入模拟批次。",
     "dashboard.shortcutImportSurvey": "导入或生成问卷",
     "dashboard.shortcutCreateTemplate": "创建参与者模板",
     "dashboard.shortcutOpenRuns": "查看模拟批次",
@@ -771,6 +773,7 @@ export const messages: Record<AppLocale, Record<string, string>> = {
     "common.owner": "Owner",
     "common.navigation": "Open navigation",
     "common.readonlyForeignData": "You are viewing data from another account. Editing is disabled.",
+    "common.moreSettings": "More settings",
 
     "nav.dashboard": "Dashboard",
     "nav.llmConfigs": "Model Configs",
@@ -817,6 +820,7 @@ export const messages: Record<AppLocale, Record<string, string>> = {
     "dashboard.runDesc": "Participants {{participants}} · Completed responses {{responses}}",
     "dashboard.surveyDesc": "{{sections}} sections",
     "dashboard.quickActions": "Quick actions",
+    "dashboard.quickActionsDescription": "Keep the most common next steps in one more prominent card: create or import a survey, refine the participant template, or jump straight into mock runs.",
     "dashboard.shortcutImportSurvey": "Import or generate a survey",
     "dashboard.shortcutCreateTemplate": "Create a participant template",
     "dashboard.shortcutOpenRuns": "Open mock runs",

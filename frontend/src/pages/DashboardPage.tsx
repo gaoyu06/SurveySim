@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button, List, Space, Tag, Typography } from "antd";
+import { Button, List, Tag, Typography } from "antd";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/api/client";
 import { ConversationQuickStart } from "@/components/onboarding/ConversationQuickStart";
@@ -9,14 +9,6 @@ import { useI18n } from "@/i18n/I18nProvider";
 export function DashboardPage() {
   const navigate = useNavigate();
   const { t } = useI18n();
-  const llmConfigs = useQuery({
-    queryKey: ["llm-configs"],
-    queryFn: () => apiClient.get<any[]>("/llm-configs"),
-  });
-  const templates = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => apiClient.get<any[]>("/participant-templates"),
-  });
   const surveys = useQuery({
     queryKey: ["surveys"],
     queryFn: () => apiClient.get<any[]>("/surveys"),
@@ -25,13 +17,6 @@ export function DashboardPage() {
     queryKey: ["mock-runs"],
     queryFn: () => apiClient.get<any[]>("/mock-runs"),
   });
-
-  const metrics = [
-    { label: t("dashboard.metricLlmConfigs"), value: llmConfigs.data?.length ?? 0 },
-    { label: t("dashboard.metricTemplates"), value: templates.data?.length ?? 0 },
-    { label: t("dashboard.metricSurveys"), value: surveys.data?.length ?? 0 },
-    { label: t("dashboard.metricMockRuns"), value: runs.data?.length ?? 0 },
-  ];
 
   const shortcuts = [
     { label: t("dashboard.shortcutImportSurvey"), action: () => navigate("/content-tasks/import") },
@@ -45,26 +30,41 @@ export function DashboardPage() {
 
       <ConversationQuickStart />
 
-      <div className="dashboard-utility-row">
-        <div className="metric-grid" style={{ flex: 1 }}>
-          {metrics.map((metric) => (
-            <div className="panel metric-card" key={metric.label}>
-              <div className="metric-label">{metric.label}</div>
-              <div className="metric-value">{metric.value}</div>
+      <Panel style={{ marginBottom: 18, padding: 0, overflow: "hidden" }}>
+        <div className="dashboard-shortcuts-card">
+          <div className="dashboard-shortcuts-card__intro">
+            <div className="dashboard-shortcuts-card__eyebrow">{t("dashboard.quickActions")}</div>
+            <Typography.Title level={3} className="dashboard-shortcuts-card__title">
+              {t("dashboard.quickActions")}
+            </Typography.Title>
+            <div className="dashboard-shortcuts-card__stats">
+              <div className="dashboard-shortcuts-card__stat">
+                <span>{t("dashboard.latestSurveys")}</span>
+                <strong>{surveys.data?.length ?? 0}</strong>
+              </div>
+              <div className="dashboard-shortcuts-card__stat">
+                <span>{t("dashboard.latestRuns")}</span>
+                <strong>{runs.data?.length ?? 0}</strong>
+              </div>
             </div>
-          ))}
-        </div>
-        <Panel style={{ minWidth: 280 }}>
-          <Typography.Title level={4}>{t("dashboard.quickActions")}</Typography.Title>
-          <Space direction="vertical" style={{ width: "100%" }} size={10}>
-            {shortcuts.map((shortcut) => (
-              <Button key={shortcut.label} block onClick={shortcut.action}>
+          </div>
+
+          <div className="dashboard-shortcuts-card__actions">
+            {shortcuts.map((shortcut, index) => (
+              <Button
+                key={shortcut.label}
+                type={index === 0 ? "primary" : "default"}
+                size="large"
+                block
+                className="dashboard-shortcuts-card__button"
+                onClick={shortcut.action}
+              >
                 {shortcut.label}
               </Button>
             ))}
-          </Space>
-        </Panel>
-      </div>
+          </div>
+        </div>
+      </Panel>
 
       <div className="workspace-grid">
         <Panel>

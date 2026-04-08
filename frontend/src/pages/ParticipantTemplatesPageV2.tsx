@@ -18,7 +18,7 @@ import {
   type ParticipantTemplateDto,
 } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
-import { FieldLabel, HelpCallout } from "@/components/Help";
+import { FieldLabel } from "@/components/Help";
 import { RuleBuilderV2 } from "@/components/forms/RuleBuilderV2";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -403,12 +403,6 @@ export function ParticipantTemplatesPageV2() {
           </Space>
         }
       />
-      <HelpCallout
-        title={t("templates.guideTitle")}
-        description={t("templates.guideDescription")}
-        items={[t("templates.guideStep1"), t("templates.guideStep2"), t("templates.guideStep3")]}
-      />
-
       <Panel>
         <Typography.Title level={4}>{t("templates.templates")}</Typography.Title>
         <List
@@ -473,9 +467,6 @@ export function ParticipantTemplatesPageV2() {
         <div className="card-stack">
           <Panel>
             <Typography.Title level={4}>{t("templates.aiGenerateAction")}</Typography.Title>
-            <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-              {t("templates.quickCreateDescription")}
-            </Typography.Paragraph>
             <Form layout="vertical" disabled={isReadonlySelection}>
               <Form.Item label={<FieldLabel label={t("templates.aiGeneratePrompt")} hint={t("templates.aiGeneratePromptHint")} />}>
                 <Input.TextArea rows={4} value={aiPrompt} placeholder={t("templates.aiGeneratePlaceholder")} onChange={(event) => setAiPrompt(event.target.value)} />
@@ -516,26 +507,34 @@ export function ParticipantTemplatesPageV2() {
 
           <Panel>
             <Typography.Title level={4}>{t("templates.essentialSetup")}</Typography.Title>
-            <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-              {t("templates.essentialSetupDescription")}
-            </Typography.Paragraph>
             <Form layout="vertical" disabled={isReadonlySelection}>
               {isReadonlySelection ? <div className="subtle-help">{t("common.readonlyForeignData")}</div> : null}
-              <div className="responsive-form-inline">
-                <Form.Item label={<FieldLabel label={t("templates.templateName")} hint={t("templates.templateNameHint")} />}>
-                  <Input value={draft.template.name} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, name: event.target.value } }))} />
-                </Form.Item>
-                <Form.Item label={<FieldLabel label={t("templates.previewSampleSize")} hint={t("templates.previewSampleSizeHint")} />}>
-                  <InputNumber min={10} max={5000} style={{ width: "100%" }} value={draft.template.sampleSizePreview} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, sampleSizePreview: value ?? 300 } }))} />
-                </Form.Item>
-              </div>
+              <Form.Item label={<FieldLabel label={t("templates.templateName")} hint={t("templates.templateNameHint")} />}>
+                <Input value={draft.template.name} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, name: event.target.value } }))} />
+              </Form.Item>
               <Form.Item label={<FieldLabel label={t("templates.description")} hint={t("templates.descriptionHint")} />}>
                 <Input.TextArea rows={2} value={draft.template.description} onChange={(event) => setDraft((current) => ({ ...current, template: { ...current.template, description: event.target.value } }))} />
               </Form.Item>
-              <Form.Item label={<FieldLabel label={t("templates.trackedDimensions")} hint={t("templates.trackedDimensionsHint")} />}>
-                <Select mode="multiple" value={selectedBuiltinKeys} options={visibleBuiltinAttributes.map((attribute) => ({ label: formatAttributeLabel(attribute), value: attribute.key }))} onChange={setBuiltinSelection} />
-                <div className="subtle-help">{t("templates.dimensionHint")}</div>
-              </Form.Item>
+              <Collapse
+                className="workspace-collapse"
+                items={[
+                  {
+                    key: "essential-more",
+                    label: t("common.moreSettings"),
+                    children: (
+                      <>
+                        <Form.Item label={<FieldLabel label={t("templates.previewSampleSize")} hint={t("templates.previewSampleSizeHint")} />}>
+                          <InputNumber min={10} max={5000} style={{ width: "100%" }} value={draft.template.sampleSizePreview} onChange={(value) => setDraft((current) => ({ ...current, template: { ...current.template, sampleSizePreview: value ?? 300 } }))} />
+                        </Form.Item>
+                        <Form.Item style={{ marginBottom: 0 }} label={<FieldLabel label={t("templates.trackedDimensions")} hint={t("templates.trackedDimensionsHint")} />}>
+                          <Select mode="multiple" value={selectedBuiltinKeys} options={visibleBuiltinAttributes.map((attribute) => ({ label: formatAttributeLabel(attribute), value: attribute.key }))} onChange={setBuiltinSelection} />
+                          <div className="subtle-help">{t("templates.dimensionHint")}</div>
+                        </Form.Item>
+                      </>
+                    ),
+                  },
+                ]}
+              />
             </Form>
           </Panel>
 

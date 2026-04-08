@@ -5,7 +5,6 @@ import type { SurveyImportRecordEvent, SurveySchemaDto } from "@surveysim/shared
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/api/client";
-import { HelpCallout } from "@/components/Help";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { SurveySchemaEditor } from "@/components/surveys/SurveySchemaEditor";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -144,16 +143,6 @@ export function SurveyImportStreamPage() {
           </Space>
         }
       />
-      <HelpCallout
-        title={t("surveys.streamGuideTitle")}
-        description={t("surveys.streamGuideDescription")}
-        items={[
-          t("surveys.streamGuideStep1"),
-          t("surveys.streamGuideStep2"),
-          t("surveys.streamGuideStep3"),
-        ]}
-      />
-
       {streamLogs.length ? (
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           <div className="metric-grid">

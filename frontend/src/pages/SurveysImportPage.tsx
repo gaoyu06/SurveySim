@@ -88,7 +88,6 @@ export function SurveysImportPage() {
       <div className="workspace-grid quick-import-grid">
         <Panel>
           <Typography.Title level={4}>{copy.quickTitle}</Typography.Title>
-          <Typography.Paragraph type="secondary">{copy.quickDesc}</Typography.Paragraph>
           <Form layout="vertical">
             <Form.Item label={<FieldLabel label={copy.quickTitle} hint={copy.quickDesc} />}>
               <Input.TextArea rows={10} value={quickPrompt} placeholder={copy.quickPlaceholder} onChange={(event) => setQuickPrompt(event.target.value)} />
@@ -129,7 +128,6 @@ export function SurveysImportPage() {
 
         <Panel>
           <Typography.Title level={4}>{copy.importTitle}</Typography.Title>
-          <Typography.Paragraph type="secondary">{copy.importDesc}</Typography.Paragraph>
           <Collapse
             defaultActiveKey={[]}
             items={[

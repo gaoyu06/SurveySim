@@ -4,7 +4,7 @@ import { App, Button, Empty, Form, Input, Progress, Select, Space, Switch, Table
 import { useEffect, useMemo, useState } from "react";
 import type { MockRunDto, ReportComparisonDto, ReportDto } from "@surveysim/shared";
 import { apiClient } from "@/api/client";
-import { FieldLabel, HelpCallout } from "@/components/Help";
+import { FieldLabel } from "@/components/Help";
 import { SimpleChart } from "@/components/charts/SimpleChart";
 import { PageHeader, Panel } from "@/components/PageHeader";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -538,11 +538,6 @@ export function ReportsPage() {
             </Space>
           ) : undefined
         }
-      />
-      <HelpCallout
-        title={t("reports.guideTitle")}
-        description={t("reports.guideDescription")}
-        items={[t("reports.guideStep1"), t("reports.guideStep2"), t("reports.guideStep3")]}
       />
       <div className="workspace-grid">
         <Panel>

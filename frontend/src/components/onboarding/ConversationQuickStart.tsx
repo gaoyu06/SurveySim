@@ -58,10 +58,8 @@ function getCopy(locale: string) {
   const zh = locale === "zh-CN";
   return {
     heroBadge: zh ? "Natural language quick start" : "Natural language quick start",
-    heroTitle: zh ? "一句话描述，我来帮你创建问卷和参与者模板" : "Describe it once, then let the assistant create your survey and participant template",
-    heroDescription: zh
-      ? "直接写下研究主题、目标人群和想了解的问题。系统会在对话里继续追问，并自动生成可编辑的问卷草稿与人群模板。"
-      : "Describe the topic, audience, and what you want to learn. The assistant will follow up and build an editable survey draft plus a reusable participant template.",
+    heroTitle: zh ? "一句话创建问卷和参与者模板" : "Create survey and audience in one prompt",
+    heroDescription: zh ? "" : "",
     heroPlaceholder: zh ? "例如：我想做一个面向大学生的校园外卖满意度调研，重点了解下单频率、价格敏感度和配送体验。" : "Example: I need a campus food delivery satisfaction survey for college students, focused on order frequency, price sensitivity, and delivery experience.",
     startConversation: zh ? "开始对话创建" : "Start guided creation",
     openTemplates: zh ? "去看参与者页" : "Open templates",
@@ -70,8 +68,7 @@ function getCopy(locale: string) {
     drawerTitle: zh ? "极速创建助手" : "Quick creation assistant",
     restart: zh ? "重新开始" : "Restart",
     createNow: zh ? "直接创建" : "Create now",
-    composerPlaceholder:
-      zh ? "也可以直接补充一句，比如“题目偏短一些，适合 3 分钟内完成”" : "You can add one more instruction, such as “keep it short enough for a 3-minute flow”.",
+    composerPlaceholder: zh ? "直接补充一句新要求" : "Add one more instruction",
     askIntent: zh ? "先直接告诉我你想做什么研究。我会继续追问几步，然后直接帮你生成问卷和参与者模板。" : "Start by telling me what you want to research. I’ll ask a few follow-ups and then create the survey and participant template.",
     askAudience: zh ? "这份问卷主要希望谁来回答？如果有更具体的人群，也可以直接输入。" : "Who should answer this survey? You can also type a more specific audience.",
     askGoal: zh ? "这份问卷更接近哪类任务？我会据此控制题型和结构。" : "What kind of task is this closest to? I’ll use that to shape the question types and structure.",
@@ -92,9 +89,10 @@ function getCopy(locale: string) {
     success: zh ? "已创建完成。你现在可以直接继续编辑，或者跳去对应页面查看。" : "Done. You can continue editing now or jump to the created resources.",
     openSurvey: zh ? "打开问卷" : "Open survey",
     openTemplate: zh ? "打开参与者模板" : "Open template",
-    helperHint: zh ? "当前流程支持点选快捷选项，也支持你随时直接输入自然语言补充。" : "You can click quick options at any step, or type additional natural-language instructions anytime.",
+    helperHint: zh ? "支持点选和自然语言输入" : "Click options or type naturally",
     noConfig: zh ? "使用默认模型" : "Use default model",
-    doneHint: zh ? "如果还想换一个方向，直接重新开始即可。" : "If you want a different direction, simply restart.",
+    doneHint: zh ? "需要新方向可直接重开" : "Restart for another direction",
+    confirmHint: zh ? "可补充一句后直接创建" : "Add one line or create now",
     addDetail: zh ? "补充要求" : "Add detail",
     send: zh ? "发送" : "Send",
     options: {
@@ -374,9 +372,6 @@ export function ConversationQuickStart() {
             <Typography.Title level={2} style={{ marginTop: 0, marginBottom: 12 }}>
               {copy.heroTitle}
             </Typography.Title>
-            <Typography.Paragraph className="quick-start-hero__description">
-              {copy.heroDescription}
-            </Typography.Paragraph>
             <Input.TextArea
               value={heroInput}
               onChange={(event) => setHeroInput(event.target.value)}
@@ -401,7 +396,6 @@ export function ConversationQuickStart() {
                 </button>
               ))}
             </div>
-            <div className="quick-start-hero__note">{copy.helperHint}</div>
           </div>
         </div>
       </div>
@@ -416,7 +410,7 @@ export function ConversationQuickStart() {
       >
         <div className="assistant-shell">
           <div className="assistant-summary-bar">
-            {summaryTags.length ? summaryTags.map((item) => <Tag key={item}>{item}</Tag>) : <Tag>{copy.helperHint}</Tag>}
+            {summaryTags.length ? summaryTags.map((item) => <Tag key={item}>{item}</Tag>) : <Tag>{copy.startConversation}</Tag>}
           </div>
           <div className="assistant-thread">
             {messages.map((item) => (
@@ -458,7 +452,7 @@ export function ConversationQuickStart() {
                     <Button
                       key={option.value}
                       type={option.mode === "primary" ? "primary" : "default"}
-                      ghost={option.mode !== "primary"}
+                      className={`assistant-option-row__button${option.mode === "primary" ? " assistant-option-row__button--primary" : ""}`}
                       disabled={createMutation.isPending}
                       onClick={() => submitAnswer(option.value)}
                     >
@@ -475,7 +469,7 @@ export function ConversationQuickStart() {
                 disabled={createMutation.isPending}
               />
               <div className="assistant-composer__actions">
-                <Typography.Text type="secondary">{step === "confirm" ? copy.helperHint : buildAssistantQuestion(step, copy)}</Typography.Text>
+                <Typography.Text type="secondary">{step === "confirm" ? copy.confirmHint : buildAssistantQuestion(step, copy)}</Typography.Text>
                 <Button type="primary" disabled={!composerValue.trim() || createMutation.isPending} loading={createMutation.isPending} onClick={() => submitAnswer(composerValue)}>
                   {step === "confirm" ? copy.addDetail : copy.send}
                 </Button>
