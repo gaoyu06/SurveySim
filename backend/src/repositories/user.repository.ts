@@ -34,16 +34,4 @@ export const userRepository = {
   updateDailyUsageLimit(id: string, dailyUsageLimit: number | null) {
     return prisma.user.update({ where: { id }, data: { dailyUsageLimit } });
   },
-  async ensureAdminExists() {
-    const adminCount = await prisma.user.count({ where: { role: UserRole.ADMIN } });
-    if (adminCount > 0) return null;
-
-    const oldestUser = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
-    if (!oldestUser) return null;
-
-    return prisma.user.update({
-      where: { id: oldestUser.id },
-      data: { role: UserRole.ADMIN },
-    });
-  },
 };

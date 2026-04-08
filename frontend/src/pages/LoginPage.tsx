@@ -1,5 +1,6 @@
 import { LockOutlined, MailOutlined } from "@ant-design/icons";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import { App, Button, Card, Col, Form, Input, Row, Tabs, Typography } from "antd";
 import { Controller, useForm, type UseFormReturn } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
@@ -15,12 +16,17 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { authStore } from "@/stores/auth.store";
 
 type AuthFormValues = LoginInput | RegisterInput;
+type AuthMode = "login" | "register" | "bootstrap";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const setSession = authStore((state) => state.setSession);
   const { message } = App.useApp();
+  const bootstrapQuery = useQuery({
+    queryKey: ["auth-bootstrap"],
+    queryFn: () => apiClient.get<{ canBootstrap: boolean }>("/auth/bootstrap"),
+  });
 
   const loginForm = useForm<LoginInput>({
     resolver: zodResolver(loginInputSchema),
@@ -31,11 +37,18 @@ export function LoginPage() {
     defaultValues: { email: "", password: "" },
   });
 
-  const submit = async (mode: "login" | "register", values: AuthFormValues) => {
+  const submit = async (mode: AuthMode, values: AuthFormValues) => {
     try {
-      const result = await apiClient.post<AuthResponse>(`/auth/${mode}`, values);
+      const path = mode === "bootstrap" ? "/auth/bootstrap" : `/auth/${mode}`;
+      const result = await apiClient.post<AuthResponse>(path, values);
       setSession(result.token, result.user);
-      message.success(mode === "login" ? t("login.successLogin") : t("login.successRegister"));
+      if (mode === "login") {
+        message.success(t("login.successLogin"));
+      } else if (mode === "bootstrap") {
+        message.success(t("login.successBootstrap"));
+      } else {
+        message.success(t("login.successRegister"));
+      }
       navigate("/");
     } catch (error) {
       const errorMessage =
@@ -44,7 +57,7 @@ export function LoginPage() {
     }
   };
 
-  const renderAuthForm = (mode: "login" | "register", form: UseFormReturn<AuthFormValues>) => {
+  const renderAuthForm = (mode: AuthMode, form: UseFormReturn<AuthFormValues>) => {
     return (
       <form onSubmit={form.handleSubmit((values) => submit(mode, values))} noValidate>
         <Form layout="vertical" component={false}>
@@ -90,12 +103,14 @@ export function LoginPage() {
             block
             loading={form.formState.isSubmitting}
           >
-            {mode === "login" ? t("login.submitLogin") : t("login.submitRegister")}
+            {mode === "login" ? t("login.submitLogin") : mode === "bootstrap" ? t("login.submitBootstrap") : t("login.submitRegister")}
           </Button>
         </Form>
       </form>
     );
   };
+
+  const canBootstrap = bootstrapQuery.data?.canBootstrap ?? false;
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
@@ -124,6 +139,11 @@ export function LoginPage() {
         </Col>
         <Col xs={24} lg={11}>
           <Card className="panel" style={{ borderRadius: 24, background: "rgba(15,23,42,0.55)" }}>
+            {canBootstrap ? (
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+                {t("login.bootstrapHint")}
+              </Typography.Paragraph>
+            ) : null}
             <Tabs
               items={[
                 {
@@ -131,11 +151,21 @@ export function LoginPage() {
                   label: t("login.tabLogin"),
                   children: renderAuthForm("login", loginForm as UseFormReturn<AuthFormValues>),
                 },
-                {
-                  key: "register",
-                  label: t("login.tabRegister"),
-                  children: renderAuthForm("register", registerForm as UseFormReturn<AuthFormValues>),
-                },
+                ...(canBootstrap
+                  ? [
+                      {
+                        key: "bootstrap",
+                        label: t("login.tabBootstrap"),
+                        children: renderAuthForm("bootstrap", registerForm as UseFormReturn<AuthFormValues>),
+                      },
+                    ]
+                  : [
+                      {
+                        key: "register",
+                        label: t("login.tabRegister"),
+                        children: renderAuthForm("register", registerForm as UseFormReturn<AuthFormValues>),
+                      },
+                    ]),
               ]}
             />
           </Card>

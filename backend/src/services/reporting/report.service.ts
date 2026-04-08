@@ -1,6 +1,7 @@
 import {
   reportComparisonInputSchema,
   reportFilterSchema,
+  reportSchema,
   type ParticipantIdentity,
   type ReportComparisonDto,
   type ReportDto,
@@ -70,6 +71,10 @@ function round(value: number) {
   return Number(value.toFixed(2));
 }
 
+function isUnfilteredReport(filters: ReportFilter) {
+  return !filters.groupBy && Object.keys(filters.attributes).length === 0;
+}
+
 function buildBaseQuestionMeta(
   questionId: string,
   title: string,
@@ -110,13 +115,32 @@ export class ReportService {
   async getReport(user: AuthUserContext, runId: string, input: unknown): Promise<ReportDto> {
     const filters = reportFilterSchema.parse(input ?? {});
     const run = await this.loadRun(user, runId);
+
+    if (
+      isUnfilteredReport(filters) &&
+      run.status === "COMPLETED" &&
+      run.aggregatedReport &&
+      run.aggregatedReport.updatedAt >= run.updatedAt
+    ) {
+      const parsedCache = reportSchema.safeParse(fromJson(run.aggregatedReport.payload));
+      if (
+        parsedCache.success &&
+        parsedCache.data.runId === run.id &&
+        isUnfilteredReport(parsedCache.data.filters)
+      ) {
+        return parsedCache.data;
+      }
+    }
+
     const report = await this.buildReport(run, filters);
 
-    await prisma.aggregatedReport.upsert({
-      where: { mockRunId: runId },
-      create: { mockRunId: runId, payload: toJson(report) },
-      update: { payload: toJson(report) },
-    });
+    if (isUnfilteredReport(filters)) {
+      await prisma.aggregatedReport.upsert({
+        where: { mockRunId: runId },
+        create: { mockRunId: runId, payload: toJson(report) },
+        update: { payload: toJson(report) },
+      });
+    }
 
     return report;
   }
@@ -160,6 +184,7 @@ export class ReportService {
     const run = await prisma.mockRun.findFirst({
       where: isAdmin(user) ? { id: runId } : { id: runId, userId: user.id },
       include: {
+        aggregatedReport: true,
         survey: true,
         participantInstances: {
           include: {

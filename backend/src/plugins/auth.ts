@@ -10,7 +10,6 @@ export const authPlugin = fp(async (app) => {
 
   app.decorate("authenticate", async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      await userRepository.ensureAdminExists();
       const payload = await request.jwtVerify<{ id: string; email: string }>();
       const user = await userRepository.findById(payload.id);
       if (!user) {

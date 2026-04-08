@@ -18,24 +18,44 @@ function mapUser(user: { id: string; email: string; role: UserRole; createdAt: D
 export class AuthService {
   constructor(private readonly app: FastifyInstance) {}
 
-  async register(input: unknown): Promise<AuthResponse> {
+  async bootstrap(input: unknown): Promise<AuthResponse> {
     const payload = registerInputSchema.parse(input);
+    const adminCount = await userRepository.countAdmins();
+    if (adminCount > 0) {
+      throw new Error("System already bootstrapped");
+    }
+
     const existing = await userRepository.findByEmail(payload.email);
     if (existing) {
       throw new Error("Email already exists");
     }
 
     const passwordHash = await hashPassword(payload.password);
-    const userCount = await userRepository.count();
-    const role = userCount === 0 ? UserRole.ADMIN : UserRole.USER;
-    const user = await userRepository.create(payload.email, passwordHash, role);
+    const user = await userRepository.create(payload.email, passwordHash, UserRole.ADMIN);
+    const token = await this.app.jwt.sign({ id: user.id, email: user.email });
+    return { token, user: mapUser(user), canBootstrap: false };
+  }
+
+  async register(input: unknown): Promise<AuthResponse> {
+    const payload = registerInputSchema.parse(input);
+    const adminCount = await userRepository.countAdmins();
+    if (adminCount === 0) {
+      throw new Error("System is not bootstrapped. Please create the first admin account first.");
+    }
+
+    const existing = await userRepository.findByEmail(payload.email);
+    if (existing) {
+      throw new Error("Email already exists");
+    }
+
+    const passwordHash = await hashPassword(payload.password);
+    const user = await userRepository.create(payload.email, passwordHash, UserRole.USER);
     const token = await this.app.jwt.sign({ id: user.id, email: user.email });
 
     return { token, user: mapUser(user) };
   }
 
   async login(input: unknown): Promise<AuthResponse> {
-    await userRepository.ensureAdminExists();
     const payload = loginInputSchema.parse(input);
     const user = await userRepository.findByEmail(payload.email);
     if (!user) {
@@ -52,7 +72,6 @@ export class AuthService {
   }
 
   async me(userId: string) {
-    await userRepository.ensureAdminExists();
     const user = await userRepository.findById(userId);
     if (!user) {
       throw new Error("User not found");
@@ -61,7 +80,7 @@ export class AuthService {
   }
 
   async canBootstrap() {
-    const count = await userRepository.count();
-    return count === 0;
+    const adminCount = await userRepository.countAdmins();
+    return adminCount === 0;
   }
 }
