@@ -1,5 +1,5 @@
 import { prisma } from "../lib/db.js";
-import type { LlmProviderConfigInput } from "@surveysim/shared";
+import type { LlmProviderConfigCreateInput, LlmProviderConfigInput } from "@surveysim/shared";
 
 export const llmConfigRepository = {
   listAccessible(userId: string) {
@@ -32,7 +32,7 @@ export const llmConfigRepository = {
   getAnyById(id: string) {
     return prisma.llmProviderConfig.findUnique({ where: { id }, include: { user: true } });
   },
-  async create(userId: string, input: LlmProviderConfigInput) {
+  async create(userId: string, input: LlmProviderConfigCreateInput) {
     return prisma.$transaction(async (tx) => {
       if (input.isDefault) {
         await tx.llmProviderConfig.updateMany({ where: { userId }, data: { isDefault: false } });

@@ -8,6 +8,7 @@ import { mockRunRoutes } from "./mock-run.routes.js";
 import { reportRoutes } from "./report.routes.js";
 import { exportRoutes } from "./export.routes.js";
 import { systemRoutes } from "./system.routes.js";
+import { workspaceAssistantRoutes } from "./workspace-assistant.routes.js";
 
 export async function registerRoutes(app: FastifyInstance) {
   app.get("/api/health", async () => ({ ok: true }));
@@ -21,4 +22,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(reportRoutes, { prefix: "/api/reports" });
   await app.register(exportRoutes, { prefix: "/api/exports" });
   await app.register(systemRoutes, { prefix: "/api/system" });
+  await app.register(workspaceAssistantRoutes, { prefix: "/api/workspace-assistant" });
 }

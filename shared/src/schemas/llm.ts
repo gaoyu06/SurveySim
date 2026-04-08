@@ -3,7 +3,7 @@ import { z } from "zod";
 export const llmProviderConfigInputSchema = z.object({
   name: z.string().min(1).max(80),
   baseUrl: z.string().url(),
-  apiKey: z.string().min(1),
+  apiKey: z.string().min(1).optional(),
   model: z.string().min(1),
   temperature: z.number().min(0).max(2),
   maxTokens: z.number().int().min(64).max(16000),
@@ -13,7 +13,11 @@ export const llmProviderConfigInputSchema = z.object({
   isDefault: z.boolean().optional(),
 });
 
-export const llmProviderConfigSchema = llmProviderConfigInputSchema.extend({
+export const llmProviderConfigCreateInputSchema = llmProviderConfigInputSchema.extend({
+  apiKey: z.string().min(1),
+});
+
+export const llmProviderConfigSchema = llmProviderConfigInputSchema.omit({ apiKey: true }).extend({
   id: z.string(),
   ownerId: z.string(),
   ownerEmail: z.string().email(),
@@ -36,6 +40,7 @@ export const testConnectionInputSchema = z.object({
 });
 
 export type LlmProviderConfigInput = z.infer<typeof llmProviderConfigInputSchema>;
+export type LlmProviderConfigCreateInput = z.infer<typeof llmProviderConfigCreateInputSchema>;
 export type LlmProviderConfigDto = z.infer<typeof llmProviderConfigSchema>;
 export type TestConnectionInput = z.infer<typeof testConnectionInputSchema>;
 export type LlmPublicVisibilityInput = z.infer<typeof llmPublicVisibilityInputSchema>;

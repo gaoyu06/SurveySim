@@ -61,14 +61,14 @@ Generate a clean printable summary page for completed runs, including top-level 
 
 - Frontend: React, Vite, TypeScript, Ant Design
 - Backend: Fastify, Prisma, TypeScript
-- Database: SQLite by default
+- Database: MySQL
 - Shared package: Zod schemas and DTOs
 
 ## Repository Structure
 
 ```text
 frontend/   React application
-backend/    Fastify API, Prisma schema, SQLite runtime
+backend/    Fastify API and Prisma schema
 shared/     Shared types, DTOs, and validation schemas
 ```
 
@@ -97,6 +97,7 @@ At minimum, set:
 
 ```env
 JWT_SECRET=replace-with-a-strong-secret
+DATABASE_URL=mysql://<user>:<password>@<host>:<port>/<database>
 ```
 
 ### Initialize the database
@@ -213,11 +214,10 @@ server {
 
 By default, SurveySim stores runtime data in:
 
-- `backend/dev.db`
 - `backend/storage/runtime/`
 - `backend/.env`
 
-If you are using SQLite in production, make sure these files are backed up.
+In production, make sure your MySQL database and `backend/storage/runtime/` are backed up.
 
 ## Contributing
 

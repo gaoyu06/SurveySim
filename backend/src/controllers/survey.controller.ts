@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { SurveyService } from "../services/survey.service.js";
 import { prisma } from "../lib/db.js";
@@ -7,34 +8,53 @@ import { env } from "../config/env.js";
 import { ensureDir } from "../utils/fs.js";
 import { parseImportDocument } from "../services/document-import.service.js";
 
+const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
+
+function sanitizeUploadFilename(filename: string | undefined) {
+  const baseName = path.basename(filename || "upload.txt").trim();
+  const sanitized = baseName.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_").replace(/\s+/g, " ");
+  return sanitized || "upload.txt";
+}
+
+function buildStoredUploadFilename(originalName: string) {
+  const extension = path.extname(originalName).slice(0, 16);
+  return `${Date.now()}-${randomUUID()}${extension}`;
+}
+
 async function resolveImportBody(request: FastifyRequest) {
   let body = request.body as Record<string, unknown> | undefined;
   if (request.isMultipart()) {
     const file = await request.file();
     if (!file) throw new Error("No file uploaded");
     const buffer = await file.toBuffer();
+    if (buffer.length > MAX_IMPORT_FILE_BYTES) {
+      throw new Error(`Uploaded file is too large. Max size is ${MAX_IMPORT_FILE_BYTES / (1024 * 1024)}MB`);
+    }
+
+    const safeFilename = sanitizeUploadFilename(file.filename);
+    const parsedDocument = await parseImportDocument({
+      buffer,
+      filename: safeFilename,
+      mimeType: file.mimetype,
+    });
+
     const targetDir = path.resolve(env.STORAGE_DIR, "uploads");
     await ensureDir(targetDir);
-    const filePath = path.join(targetDir, `${Date.now()}-${file.filename}`);
+    const filePath = path.join(targetDir, buildStoredUploadFilename(safeFilename));
     await writeFile(filePath, buffer);
     await prisma.storedFile.create({
       data: {
         userId: request.authUser!.id,
         kind: "content-task-upload",
-        originalName: file.filename,
+        originalName: safeFilename,
         mimeType: file.mimetype,
         size: buffer.length,
         path: filePath,
       },
     });
-    const parsedDocument = await parseImportDocument({
-      buffer,
-      filename: file.filename,
-      mimeType: file.mimetype,
-    });
     body = {
       rawText: parsedDocument.rawText,
-      title: file.filename,
+      title: safeFilename,
       llmConfigId: file.fields.llmConfigId && "value" in file.fields.llmConfigId ? String(file.fields.llmConfigId.value) : undefined,
     };
   }

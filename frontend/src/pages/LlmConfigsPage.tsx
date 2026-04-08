@@ -42,11 +42,19 @@ export function LlmConfigsPage() {
     defaultValues,
   });
 
+  const normalizePayload = (values: LlmProviderConfigInput): LlmProviderConfigInput => {
+    const apiKey = values.apiKey?.trim();
+    return {
+      ...values,
+      apiKey: apiKey ? apiKey : undefined,
+    };
+  };
+
   const saveMutation = useMutation({
     mutationFn: async (values: LlmProviderConfigInput) =>
       editing
-        ? apiClient.put<LlmProviderConfigDto>(`/llm-configs/${editing.id}`, values)
-        : apiClient.post<LlmProviderConfigDto>("/llm-configs", values),
+        ? apiClient.put<LlmProviderConfigDto>(`/llm-configs/${editing.id}`, normalizePayload(values))
+        : apiClient.post<LlmProviderConfigDto>("/llm-configs", normalizePayload(values)),
     onSuccess: () => {
       message.success(editing ? t("llm.configUpdated") : t("llm.configCreated"));
       setOpen(false);
@@ -101,6 +109,11 @@ export function LlmConfigsPage() {
   };
 
   const submit = async (values: LlmProviderConfigInput) => {
+    if (!editing && !values.apiKey?.trim()) {
+      message.error(`${t("llm.apiKey")} is required`);
+      return;
+    }
+
     try {
       await saveMutation.mutateAsync(values);
     } catch {
@@ -114,6 +127,10 @@ export function LlmConfigsPage() {
 
     try {
       const values = form.getValues();
+      if (!values.apiKey?.trim()) {
+        message.warning(`${t("llm.apiKey")} is required`);
+        return;
+      }
       const result = await testMutation.mutateAsync(values);
       message.success(result.ok ? t("llm.connectionSucceeded") : t("llm.connectionFailed"));
     } catch (error) {
@@ -185,7 +202,7 @@ export function LlmConfigsPage() {
                       disabled={!item.isOwnedByCurrentUser}
                       onClick={() => {
                         setEditing(item);
-                        form.reset({ ...item, apiKey: item.apiKey });
+                        form.reset({ ...item, apiKey: "" });
                         setOpen(true);
                       }}
                     >

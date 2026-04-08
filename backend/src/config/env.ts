@@ -7,7 +7,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3123),
   HOST: z.string().default("0.0.0.0"),
   JWT_SECRET: z.string().min(16).default("surveysim-dev-secret"),
-  DATABASE_URL: z.string().default("file:./dev.db"),
+  DATABASE_URL: z.string().min(1),
   STORAGE_DIR: z.string().default("./storage/runtime"),
   FRONTEND_DIST: z.string().default("../frontend/dist"),
 });

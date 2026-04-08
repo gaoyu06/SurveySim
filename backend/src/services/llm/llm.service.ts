@@ -1,7 +1,9 @@
 import {
+  llmProviderConfigCreateInputSchema,
   llmPublicVisibilityInputSchema,
   llmProviderConfigInputSchema,
   testConnectionInputSchema,
+  type LlmProviderConfigCreateInput,
   type LlmProviderConfigDto,
   type LlmProviderConfigInput,
 } from "@surveysim/shared";
@@ -37,7 +39,6 @@ function mapConfig(config: {
     isOwnedByCurrentUser: config.userId === viewer.id,
     name: config.name,
     baseUrl: config.baseUrl,
-    apiKey: config.apiKey,
     maskedApiKey: maskApiKey(config.apiKey),
     model: config.model,
     temperature: config.temperature,
@@ -81,7 +82,7 @@ export class LlmService {
   }
 
   async create(userId: string, input: unknown) {
-    const payload = llmProviderConfigInputSchema.parse(input) as LlmProviderConfigInput;
+    const payload = llmProviderConfigCreateInputSchema.parse(input) as LlmProviderConfigCreateInput;
     const created = await llmConfigRepository.create(userId, payload);
     return mapConfig(created, { id: userId, email: created.user.email, role: "user" });
   }
