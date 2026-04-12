@@ -93,6 +93,7 @@ export const participantTemplateSchema = participantTemplateInputSchema.extend({
   ownerId: z.string().optional(),
   ownerEmail: z.string().email().optional(),
   isOwnedByCurrentUser: z.boolean().optional(),
+  isPublic: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
   rules: z.array(participantRuleSchema),
@@ -100,6 +101,7 @@ export const participantTemplateSchema = participantTemplateInputSchema.extend({
 
 export const participantIdentitySchema = z
   .object({
+    name: z.string().optional(),
     region: z.string().optional(),
     country: z.string().optional(),
     continent: z.string().optional(),
@@ -216,6 +218,10 @@ export const participantTemplateAiGenerateStreamEventSchema = z.discriminatedUni
   }),
 ]);
 
+export const participantPublicVisibilityInputSchema = z.object({
+  isPublic: z.boolean(),
+});
+
 export type ConditionExpression = z.infer<typeof conditionExpressionSchema>;
 export type ParticipantRuleInput = z.infer<typeof participantRuleInputSchema>;
 export type ParticipantTemplateInput = z.infer<typeof participantTemplateInputSchema>;
@@ -231,3 +237,4 @@ export type ParticipantTemplateAiGenerateResult = z.infer<typeof participantTemp
 export type ParticipantTemplateAiGenerateJsonlRecord = z.infer<typeof participantTemplateAiGenerateJsonlRecordSchema>;
 export type ParticipantTemplateAiGenerateRecordEvent = z.infer<typeof participantTemplateAiGenerateRecordEventSchema>;
 export type ParticipantTemplateAiGenerateStreamEvent = z.infer<typeof participantTemplateAiGenerateStreamEventSchema>;
+export type ParticipantPublicVisibilityInput = z.infer<typeof participantPublicVisibilityInputSchema>;

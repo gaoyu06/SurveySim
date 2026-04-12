@@ -326,6 +326,21 @@ export const ATTRIBUTE_VALUE_PRESETS: Record<string, Array<{ value: string; labe
 
 export const RUN_STAGES = ["identity", "persona", "response"] as const;
 
+export const SIMULATED_NAME_POOLS = {
+  zh: {
+    surnames: ["王", "李", "张", "刘", "陈", "杨", "赵", "黄", "周", "吴", "徐", "孙", "胡", "朱", "高", "林", "何", "郭", "马", "罗"],
+    givenMale: ["浩然", "宇轩", "子墨", "俊杰", "明轩", "天宇", "嘉豪", "泽楷", "博文", "梓豪", "承泽", "亦凡"],
+    givenFemale: ["若曦", "雨桐", "欣怡", "子涵", "诗涵", "可欣", "梦瑶", "思雨", "语嫣", "婉清", "依诺", "静怡"],
+    givenNeutral: ["子安", "星辰", "一诺", "安然", "乐言", "知夏"],
+  },
+  en: {
+    firstMale: ["James", "Michael", "David", "John", "Robert", "Daniel", "William", "Ethan", "Noah", "Lucas", "Henry", "Jack"],
+    firstFemale: ["Emma", "Olivia", "Sophia", "Ava", "Isabella", "Mia", "Charlotte", "Amelia", "Harper", "Evelyn", "Lily", "Grace"],
+    firstNeutral: ["Alex", "Taylor", "Jordan", "Casey", "Morgan", "Avery"],
+    last: ["Smith", "Johnson", "Brown", "Williams", "Jones", "Garcia", "Miller", "Davis", "Wilson", "Anderson", "Thomas", "Moore"],
+  },
+} as const;
+
 export const QUESTION_TYPES = [
   "single_choice",
   "multi_choice",

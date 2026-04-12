@@ -1,6 +1,6 @@
 import { DeleteOutlined, ExclamationCircleOutlined, EyeOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Empty, Grid, List, Space, Switch, Typography } from "antd";
+import { App, Button, Drawer, Empty, Grid, List, Space, Switch, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SurveySchemaDto } from "@surveysim/shared";
@@ -20,6 +20,7 @@ type SurveyRecord = {
   ownerId?: string;
   ownerEmail?: string;
   isOwnedByCurrentUser?: boolean;
+  isPublic?: boolean;
   createdAt: string;
 };
 
@@ -94,6 +95,16 @@ export function SurveysListPage() {
       message.success(t("surveys.deleteSuccess"));
       await queryClient.invalidateQueries({ queryKey: ["content-tasks"] });
       queryClient.removeQueries({ queryKey: ["survey", id] });
+    },
+    onError: (error: Error) => message.error(error.message),
+  });
+
+  const publicMutation = useMutation({
+    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
+      apiClient.post(`/content-tasks/${id}/public`, { isPublic }),
+    onSuccess: () => {
+      message.success(t("llm.visibilityUpdated"));
+      queryClient.invalidateQueries({ queryKey: ["content-tasks"] });
     },
     onError: (error: Error) => message.error(error.message),
   });
@@ -205,6 +216,15 @@ export function SurveysListPage() {
                   >
                     {t("common.edit")}
                   </Button>
+                  {currentUser?.role === "admin" ? (
+                    <Button
+                      size="small"
+                      loading={publicMutation.isPending && publicMutation.variables?.id === item.id}
+                      onClick={() => publicMutation.mutate({ id: item.id, isPublic: !item.isPublic })}
+                    >
+                      {item.isPublic ? t("llm.makePrivate") : t("llm.makePublic")}
+                    </Button>
+                  ) : null}
                   <Button size="small" danger disabled={item.isOwnedByCurrentUser === false} icon={<DeleteOutlined />} onClick={() => confirmDelete(item)}>
                     {t("common.delete")}
                   </Button>
@@ -212,7 +232,7 @@ export function SurveysListPage() {
               ]}
             >
               <List.Item.Meta
-                title={item.title}
+                title={<Space wrap>{item.title}{item.isPublic ? <Tag color="gold">{t("llm.publicTag")}</Tag> : null}{item.isOwnedByCurrentUser === false ? <Tag>{t("llm.readOnlyTag")}</Tag> : null}</Space>}
                 description={`${t("surveys.sectionsCount", { count: item.schema.sections.length })}${item.ownerEmail ? ` · ${t("common.owner")}: ${item.ownerEmail}` : ""}`}
               />
             </List.Item>

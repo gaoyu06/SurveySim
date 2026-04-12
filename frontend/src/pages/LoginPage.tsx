@@ -113,32 +113,21 @@ export function LoginPage() {
   const canBootstrap = bootstrapQuery.data?.canBootstrap ?? false;
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
-      <Row gutter={24} style={{ width: "min(1120px, 100%)" }}>
-        <Col xs={24} lg={13}>
-          <div style={{ padding: "28px 12px" }}>
-            <div className="brand-subtitle">{t("login.heroBadge")}</div>
-            <Typography.Title
-              style={{
-                fontSize: 64,
-                lineHeight: 0.92,
-                color: "#f4ede1",
-                marginTop: 18,
-                marginBottom: 18,
-                fontFamily: '"Fraunces", serif',
-              }}
-            >
+    <div className="login-page">
+      <Row gutter={48} className="login-layout">
+        <Col xs={0} lg={13}>
+          <div className="login-hero">
+            <div className="login-hero__badge">{t("login.heroBadge")}</div>
+            <Typography.Title className="login-hero__title">
               {t("login.heroTitle")}
             </Typography.Title>
-            <Typography.Paragraph
-              style={{ color: "rgba(226,232,240,.72)", fontSize: 17, maxWidth: 640 }}
-            >
+            <Typography.Paragraph className="login-hero__subtitle">
               {t("login.heroSubtitle")}
             </Typography.Paragraph>
           </div>
         </Col>
         <Col xs={24} lg={11}>
-          <Card className="panel" style={{ borderRadius: 24, background: "rgba(15,23,42,0.55)" }}>
+          <Card className="login-card">
             {canBootstrap ? (
               <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
                 {t("login.bootstrapHint")}

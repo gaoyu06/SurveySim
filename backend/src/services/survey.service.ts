@@ -8,6 +8,7 @@ import {
   surveyImportInputSchema,
   surveyImportJsonlRecordSchema,
   surveyImportRetryRecordInputSchema,
+  surveyPublicVisibilityInputSchema,
   surveySaveInputSchema,
   type SurveyAiGenerateResult,
   type SurveyDraft,
@@ -19,7 +20,7 @@ import {
 import { fromJson } from "../lib/json.js";
 import { surveyRepository } from "../repositories/survey.repository.js";
 import type { AuthUserContext } from "../types/auth.js";
-import { isAdmin, resolveDataScope } from "../utils/access.js";
+import { requireAdmin, isAdmin, resolveDataScope } from "../utils/access.js";
 import { LlmService } from "./llm/llm.service.js";
 import { UsageLimitService } from "./usage-limit.service.js";
 import { buildSurveyExtractJsonlTask, buildSurveyGenerateTask, buildSurveyRepairJsonlRecordTask } from "./ai-tasks/index.js";
@@ -70,6 +71,7 @@ function mapSurvey(survey: any) {
     description: survey.description ?? undefined,
     rawText: survey.sourceText,
     schema: fromJson<SurveySchemaDto>(survey.schema),
+    isPublic: survey.isPublic ?? false,
     isOwnedByCurrentUser: false,
     createdAt: toIsoString(survey.createdAt)!,
     updatedAt: toIsoString(survey.updatedAt)!,
@@ -127,8 +129,11 @@ export class SurveyService {
   }
 
   async get(user: AuthUserContext, id: string) {
-    const survey = isAdmin(user) ? await surveyRepository.getAnyById(id) : await surveyRepository.getById(user.id, id);
+    const survey = await surveyRepository.getAnyById(id);
     if (!survey) throw new Error("Content task not found");
+    if (!isAdmin(user) && survey.userId !== user.id && !survey.isPublic) {
+      throw new Error("Content task not found");
+    }
     return { ...mapSurvey(survey), isOwnedByCurrentUser: survey.userId === user.id };
   }
 
@@ -145,6 +150,15 @@ export class SurveyService {
 
     await surveyRepository.delete(userId, id);
     return { success: true };
+  }
+
+  async setPublic(actor: AuthUserContext, id: string, input: unknown) {
+    requireAdmin(actor);
+    const payload = surveyPublicVisibilityInputSchema.parse(input);
+    const existing = await surveyRepository.getAnyById(id);
+    if (!existing) throw new Error("Content task not found");
+    const updated = await surveyRepository.setPublic(id, payload.isPublic);
+    return { ...mapSurvey(updated), isOwnedByCurrentUser: updated.userId === actor.id };
   }
 
   async importDraft(user: AuthUserContext, input: unknown): Promise<SurveyDraft> {

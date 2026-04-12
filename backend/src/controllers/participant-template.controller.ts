@@ -43,6 +43,13 @@ export function participantTemplateControllerFactory(service: ParticipantTemplat
     clone: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       reply.send(await service.clone(request.authUser!.id, request.params.id));
     },
+    setPublic: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      try {
+        reply.send(await service.setPublic(request.authUser!, request.params.id, request.body));
+      } catch (error) {
+        reply.code(400).send({ message: error instanceof Error ? error.message : String(error) });
+      }
+    },
     preview: async (request: FastifyRequest<{ Params: { id: string }; Querystring: { sampleSize?: number } }>, reply: FastifyReply) => {
       reply.send(await service.preview(request.authUser!.id, request.params.id, request.query.sampleSize));
     },

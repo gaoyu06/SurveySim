@@ -16,6 +16,8 @@ import { SurveyPreviewPage } from "@/pages/SurveyPreviewPage";
 import { MockRunsPage } from "@/pages/MockRunsPage";
 import { MockRunDetailPage } from "@/pages/MockRunDetailPage";
 import { ReportsPage } from "@/pages/ReportsPage";
+import { TranslationPage } from "@/pages/TranslationPage";
+import { TranslationProjectPage } from "@/pages/TranslationProjectPage";
 import { SystemSettingsPage } from "@/pages/SystemSettingsPage";
 import { UserManagementPage } from "@/pages/UserManagementPage";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -73,6 +75,8 @@ export function AppRoutes() {
         <Route path="mock-runs" element={<MockRunsPage />} />
         <Route path="mock-runs/:id" element={<MockRunDetailPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="translation" element={<TranslationPage />} />
+        <Route path="translation/projects/:id" element={<TranslationProjectPage />} />
         <Route path="admin/users" element={<UserManagementPage />} />
         <Route path="admin/settings" element={<SystemSettingsPage />} />
       </Route>

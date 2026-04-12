@@ -216,6 +216,10 @@ export const surveyAiGenerateResultSchema = z.object({
   extractionNotes: z.array(z.string()).default([]),
 });
 
+export const surveyPublicVisibilityInputSchema = z.object({
+  isPublic: z.boolean(),
+});
+
 export const contentTaskSchema = surveySchema;
 export const contentTaskImportInputSchema = surveyImportInputSchema;
 export const contentTaskDraftSchema = surveyDraftSchema;
@@ -236,6 +240,7 @@ export type SurveyImportJsonlRecord = z.infer<typeof surveyImportJsonlRecordSche
 export type SurveyImportRecordEvent = z.infer<typeof surveyImportRecordEventSchema>;
 export type SurveyAiGenerateInput = z.infer<typeof surveyAiGenerateInputSchema>;
 export type SurveyAiGenerateResult = z.infer<typeof surveyAiGenerateResultSchema>;
+export type SurveyPublicVisibilityInput = z.infer<typeof surveyPublicVisibilityInputSchema>;
 
 export type ContentScenarioType = z.infer<typeof contentScenarioTypeSchema>;
 export type ContentTaskSchemaDto = SurveySchemaDto;

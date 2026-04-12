@@ -271,6 +271,16 @@ export function ParticipantTemplatesPageV2() {
     onError: (error: Error) => message.error(error.message),
   });
 
+  const publicMutation = useMutation({
+    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
+      apiClient.post(`/participant-templates/${id}/public`, { isPublic }),
+    onSuccess: () => {
+      message.success(t("llm.visibilityUpdated"));
+      void queryClient.invalidateQueries({ queryKey: ["templates"] });
+    },
+    onError: (error: Error) => message.error(error.message),
+  });
+
   const generateWithAiMutation = useMutation({
     mutationFn: async () => {
       setAiStreamStage(undefined);
@@ -466,6 +476,15 @@ export function ParticipantTemplatesPageV2() {
                   >
                     {t("templates.clone")}
                   </Button>
+                  {currentUser?.role === "admin" ? (
+                    <Button
+                      size="small"
+                      loading={publicMutation.isPending && publicMutation.variables?.id === item.id}
+                      onClick={() => publicMutation.mutate({ id: item.id, isPublic: !item.isPublic })}
+                    >
+                      {item.isPublic ? t("llm.makePrivate") : t("llm.makePublic")}
+                    </Button>
+                  ) : null}
                   <Button size="small" key="delete" danger icon={<DeleteOutlined />} disabled={!item.isOwnedByCurrentUser} loading={deleteMutation.isPending && deleteMutation.variables === item.id} onClick={() => deleteMutation.mutate(item.id)}>
                     {t("templates.delete")}
                   </Button>
@@ -473,7 +492,7 @@ export function ParticipantTemplatesPageV2() {
               ]}
             >
               <List.Item.Meta
-                title={item.name}
+                title={<Space wrap>{item.name}{item.isPublic ? <Tag color="gold">{t("llm.publicTag")}</Tag> : null}{item.isOwnedByCurrentUser === false ? <Tag>{t("llm.readOnlyTag")}</Tag> : null}</Space>}
                 description={
                   <Space direction="vertical" size={4}>
                     <Typography.Text type="secondary">{item.description || t("common.none")}</Typography.Text>

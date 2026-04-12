@@ -7,3 +7,4 @@ export * from "./schemas/participant.js";
 export * from "./schemas/survey.js";
 export * from "./schemas/mock.js";
 export * from "./schemas/report.js";
+export * from "./schemas/translation.js";

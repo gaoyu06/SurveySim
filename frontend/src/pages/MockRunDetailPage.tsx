@@ -12,7 +12,7 @@ import {
   StopOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Form, Grid, InputNumber, List, Modal, Progress, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { App, Button, Collapse, Form, Grid, InputNumber, List, Modal, Progress, Space, Table, Tag, Tooltip, Typography } from "antd";
 import { useMemo, useState, type Key } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -378,27 +378,33 @@ export function MockRunDetailPage() {
         </Panel>
 
         <div className="run-detail-main">
-          <Panel style={{ minHeight: 0 }}>
-            <Typography.Title level={4}>{t("mockRunDetail.executionLog")}</Typography.Title>
-            <div className="run-log-shell">
-              <div className="run-log-fade run-log-fade--top" />
-              <div className="run-log-body">
-                <List
-                  size="small"
-                  dataSource={runQuery.data?.logs ?? []}
-                  renderItem={(item: any) => (
-                    <List.Item>
-                      <List.Item.Meta
-                        title={`${item.level.toUpperCase()} · ${item.stage}`}
-                        description={`${item.message} · ${new Date(item.createdAt).toLocaleString()}`}
-                      />
-                    </List.Item>
-                  )}
-                />
-              </div>
-              <div className="run-log-fade run-log-fade--bottom" />
-            </div>
-          </Panel>
+          <Collapse
+            ghost
+            items={[{
+              key: "execution-log",
+              label: <Typography.Title level={4} style={{ margin: 0 }}>{t("mockRunDetail.executionLog")}</Typography.Title>,
+              children: (
+                <div className="run-log-shell">
+                  <div className="run-log-fade run-log-fade--top" />
+                  <div className="run-log-body">
+                    <List
+                      size="small"
+                      dataSource={runQuery.data?.logs ?? []}
+                      renderItem={(item: any) => (
+                        <List.Item>
+                          <List.Item.Meta
+                            title={`${item.level.toUpperCase()} · ${item.stage}`}
+                            description={`${item.message} · ${new Date(item.createdAt).toLocaleString()}`}
+                          />
+                        </List.Item>
+                      )}
+                    />
+                  </div>
+                  <div className="run-log-fade run-log-fade--bottom" />
+                </div>
+              ),
+            }]}
+          />
 
           <Panel style={{ minHeight: 0 }}>
             <div className="participant-table-head">

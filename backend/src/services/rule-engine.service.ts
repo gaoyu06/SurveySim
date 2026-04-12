@@ -1,4 +1,4 @@
-import { resolveParticipantAttributeDefinition } from "@surveysim/shared";
+import { resolveParticipantAttributeDefinition, SIMULATED_NAME_POOLS } from "@surveysim/shared";
 import type {
   ConditionExpression,
   ParticipantIdentity,
@@ -84,6 +84,48 @@ function hasScope(scope?: ConditionExpression) {
 
 function createSyntheticId(rng: () => number) {
   return Array.from({ length: 8 }, () => Math.floor(rng() * 16).toString(16)).join("");
+}
+
+function isChineseLocaleIdentity(identity: Partial<ParticipantIdentity>) {
+  const hints = [identity.country, identity.region, identity.continent, ...(identity.customTags ?? [])]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return ["china", "chinese", "cn", "east_asia", "东亚", "中国", "中文"].some((token) => hints.includes(token));
+}
+
+function isFemaleIdentity(identity: Partial<ParticipantIdentity>) {
+  return (identity.gender ?? "").toLowerCase().includes("female") || identity.gender === "女";
+}
+
+function isMaleIdentity(identity: Partial<ParticipantIdentity>) {
+  return (identity.gender ?? "").toLowerCase().includes("male") || identity.gender === "男";
+}
+
+function generateSimulatedName(identity: Partial<ParticipantIdentity>, rng: () => number) {
+  const zh = isChineseLocaleIdentity(identity);
+  const female = isFemaleIdentity(identity);
+  const male = isMaleIdentity(identity);
+
+  if (zh) {
+    const surname = randomPick([...SIMULATED_NAME_POOLS.zh.surnames], rng);
+    const givenPool = female
+      ? SIMULATED_NAME_POOLS.zh.givenFemale
+      : male
+        ? SIMULATED_NAME_POOLS.zh.givenMale
+        : SIMULATED_NAME_POOLS.zh.givenNeutral;
+    const given = randomPick([...givenPool], rng);
+    return `${surname}${given}`;
+  }
+
+  const firstPool = female
+    ? SIMULATED_NAME_POOLS.en.firstFemale
+    : male
+      ? SIMULATED_NAME_POOLS.en.firstMale
+      : SIMULATED_NAME_POOLS.en.firstNeutral;
+  const first = randomPick([...firstPool], rng);
+  const last = randomPick([...SIMULATED_NAME_POOLS.en.last], rng);
+  return `${first} ${last}`;
 }
 
 export class RuleEngineService {
@@ -224,6 +266,10 @@ export class RuleEngineService {
         }
 
         (identity as Record<string, unknown>)[attribute.key] = randomPick(presets, rng).value;
+      }
+
+      if (!(identity as Record<string, unknown>).name) {
+        (identity as Record<string, unknown>).name = generateSimulatedName(identity, rng);
       }
 
       identities.push(identity);

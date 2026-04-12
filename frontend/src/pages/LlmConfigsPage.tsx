@@ -1,7 +1,7 @@
 import { CheckCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Form, Grid, Input, InputNumber, Space, Switch, Table, Tag } from "antd";
+import { App, Button, Collapse, Drawer, Form, Grid, Input, InputNumber, Space, Switch, Table, Tag } from "antd";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { llmProviderConfigInputSchema, type LlmProviderConfigDto, type LlmProviderConfigInput } from "@surveysim/shared";
@@ -282,81 +282,93 @@ export function LlmConfigsPage() {
               render={({ field }) => <Input {...field} value={field.value ?? ""} />}
             />
           </Form.Item>
-          <div className="responsive-form-inline">
-            <Form.Item label={t("llm.temperature")} validateStatus={form.formState.errors.temperature ? "error" : ""} help={form.formState.errors.temperature?.message}>
-              <Controller
-                name="temperature"
-                control={form.control}
-                render={({ field }) => (
-                  <InputNumber
-                    min={0}
-                    max={2}
-                    step={0.1}
-                    value={field.value}
-                    onChange={(value) => field.onChange(value ?? 0.7)}
-                  />
-                )}
-              />
-            </Form.Item>
-            <Form.Item label={t("llm.maxTokens")} validateStatus={form.formState.errors.maxTokens ? "error" : ""} help={form.formState.errors.maxTokens?.message}>
-              <Controller
-                name="maxTokens"
-                control={form.control}
-                render={({ field }) => (
-                  <InputNumber
-                    min={64}
-                    max={16000}
-                    value={field.value}
-                    onChange={(value) => field.onChange(value ?? 4000)}
-                  />
-                )}
-              />
-            </Form.Item>
-          </div>
-          <div className="responsive-form-inline">
-            <Form.Item label={t("llm.timeoutMs")} validateStatus={form.formState.errors.timeoutMs ? "error" : ""} help={form.formState.errors.timeoutMs?.message}>
-              <Controller
-                name="timeoutMs"
-                control={form.control}
-                render={({ field }) => (
-                  <InputNumber
-                    min={1000}
-                    max={300000}
-                    value={field.value}
-                    onChange={(value) => field.onChange(value ?? 60000)}
-                  />
-                )}
-              />
-            </Form.Item>
-            <Form.Item label={t("llm.concurrency")} validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
-              <Controller
-                name="concurrency"
-                control={form.control}
-                render={({ field }) => (
-                  <InputNumber
-                    min={1}
-                    max={32}
-                    value={field.value}
-                    onChange={(value) => field.onChange(value ?? 4)}
-                  />
-                )}
-              />
-            </Form.Item>
-            <Form.Item label={t("llm.retries")} validateStatus={form.formState.errors.retryCount ? "error" : ""} help={form.formState.errors.retryCount?.message}>
-              <Controller
-                name="retryCount"
-                control={form.control}
-                render={({ field }) => (
-                  <InputNumber
-                    min={0}
-                    max={8}
-                    value={field.value}
-                    onChange={(value) => field.onChange(value ?? 2)}
-                  />
-                )}
-              />
-            </Form.Item>
-          </div>
+          <Collapse
+            ghost
+            size="small"
+            items={[{
+              key: "advanced",
+              label: t("common.moreSettings"),
+              children: (
+                <>
+                  <div className="responsive-form-inline">
+                    <Form.Item label={t("llm.temperature")} validateStatus={form.formState.errors.temperature ? "error" : ""} help={form.formState.errors.temperature?.message}>
+                      <Controller
+                        name="temperature"
+                        control={form.control}
+                        render={({ field }) => (
+                          <InputNumber
+                            min={0}
+                            max={2}
+                            step={0.1}
+                            value={field.value}
+                            onChange={(value) => field.onChange(value ?? 0.7)}
+                          />
+                        )}
+                      />
+                    </Form.Item>
+                    <Form.Item label={t("llm.maxTokens")} validateStatus={form.formState.errors.maxTokens ? "error" : ""} help={form.formState.errors.maxTokens?.message}>
+                      <Controller
+                        name="maxTokens"
+                        control={form.control}
+                        render={({ field }) => (
+                          <InputNumber
+                            min={64}
+                            max={16000}
+                            value={field.value}
+                            onChange={(value) => field.onChange(value ?? 4000)}
+                          />
+                        )}
+                      />
+                    </Form.Item>
+                  </div>
+                  <div className="responsive-form-inline">
+                    <Form.Item label={t("llm.timeoutMs")} validateStatus={form.formState.errors.timeoutMs ? "error" : ""} help={form.formState.errors.timeoutMs?.message}>
+                      <Controller
+                        name="timeoutMs"
+                        control={form.control}
+                        render={({ field }) => (
+                          <InputNumber
+                            min={1000}
+                            max={300000}
+                            value={field.value}
+                            onChange={(value) => field.onChange(value ?? 60000)}
+                          />
+                        )}
+                      />
+                    </Form.Item>
+                    <Form.Item label={t("llm.concurrency")} validateStatus={form.formState.errors.concurrency ? "error" : ""} help={form.formState.errors.concurrency?.message}>
+                      <Controller
+                        name="concurrency"
+                        control={form.control}
+                        render={({ field }) => (
+                          <InputNumber
+                            min={1}
+                            max={32}
+                            value={field.value}
+                            onChange={(value) => field.onChange(value ?? 4)}
+                          />
+                        )}
+                      />
+                    </Form.Item>
+                    <Form.Item label={t("llm.retries")} validateStatus={form.formState.errors.retryCount ? "error" : ""} help={form.formState.errors.retryCount?.message}>
+                      <Controller
+                        name="retryCount"
+                        control={form.control}
+                        render={({ field }) => (
+                          <InputNumber
+                            min={0}
+                            max={8}
+                            value={field.value}
+                            onChange={(value) => field.onChange(value ?? 2)}
+                          />
+                        )}
+                      />
+                    </Form.Item>
+                  </div>
+                </>
+              ),
+            }]}
+          />
           <Form.Item label={t("llm.setAsDefault")}>
             <Controller
               name="isDefault"

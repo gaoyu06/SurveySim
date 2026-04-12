@@ -1,5 +1,6 @@
 import {
   normalizeParticipantAttributeDefinitions,
+  participantPublicVisibilityInputSchema,
   participantRandomConfigSchema,
   participantRuleInputSchema,
   participantTemplateAiGenerateJsonlRecordSchema,
@@ -18,7 +19,7 @@ import {
 import { fromJson } from "../lib/json.js";
 import { participantTemplateRepository } from "../repositories/participant-template.repository.js";
 import type { AuthUserContext } from "../types/auth.js";
-import { isAdmin, resolveDataScope } from "../utils/access.js";
+import { requireAdmin, isAdmin, resolveDataScope } from "../utils/access.js";
 import { RuleEngineService } from "./rule-engine.service.js";
 import { toIsoString } from "../utils/serialize.js";
 import { LlmService } from "./llm/llm.service.js";
@@ -62,6 +63,7 @@ function mapTemplate(template: Awaited<ReturnType<typeof participantTemplateRepo
     isOwnedByCurrentUser: false,
     name: template.name,
     description: template.description ?? undefined,
+    isPublic: template.isPublic ?? false,
     archetypeProfile: stored.archetypeProfile,
     attributes: normalizeParticipantAttributeDefinitions(stored.attributes),
     randomConfig: stored.randomConfig,
@@ -172,8 +174,13 @@ export class ParticipantTemplateService {
 
   async get(user: AuthUserContext | string, id: string) {
     const viewer = typeof user === "string" ? { id: user, email: "", role: "user" as const } : user;
-    const template = isAdmin(viewer) ? await participantTemplateRepository.getAnyById(id) : await participantTemplateRepository.getById(viewer.id, id);
+    const template = isAdmin(viewer)
+      ? await participantTemplateRepository.getAnyById(id)
+      : await participantTemplateRepository.getAnyById(id);
     if (!template) throw new Error("Participant template not found");
+    if (!isAdmin(viewer) && template.userId !== viewer.id && !template.isPublic) {
+      throw new Error("Participant template not found");
+    }
     return { ...mapTemplate(template), isOwnedByCurrentUser: template.userId === viewer.id };
   }
 
@@ -230,6 +237,15 @@ export class ParticipantTemplateService {
         note: rule.note,
       })),
     });
+  }
+
+  async setPublic(actor: AuthUserContext, id: string, input: unknown) {
+    requireAdmin(actor);
+    const payload = participantPublicVisibilityInputSchema.parse(input);
+    const existing = await participantTemplateRepository.getAnyById(id);
+    if (!existing) throw new Error("Participant template not found");
+    const updated = await participantTemplateRepository.setPublic(id, payload.isPublic);
+    return { ...mapTemplate(updated), isOwnedByCurrentUser: updated.userId === actor.id };
   }
 
   async preview(userId: string, id: string, sampleSize?: number) {

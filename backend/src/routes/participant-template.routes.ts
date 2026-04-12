@@ -13,5 +13,6 @@ export async function participantTemplateRoutes(app: FastifyInstance) {
   app.put("/:id", auth, controller.update as any);
   app.delete("/:id", auth, controller.delete as any);
   app.post("/:id/clone", auth, controller.clone as any);
+  app.post("/:id/public", auth, controller.setPublic as any);
   app.get("/:id/preview", auth, controller.preview as any);
 }

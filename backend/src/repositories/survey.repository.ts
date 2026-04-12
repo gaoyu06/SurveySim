@@ -73,28 +73,29 @@ const includeSurveyRelations = {
 export const surveyRepository = {
   list(userId: string) {
     return prisma.survey.findMany({
-      where: { userId },
+      where: { OR: [{ userId }, { isPublic: true }] },
       include: includeSurveyRelations,
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ isPublic: "desc" }, { updatedAt: "desc" }],
     });
   },
   listAll() {
     return prisma.survey.findMany({
       include: includeSurveyRelations,
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ isPublic: "desc" }, { updatedAt: "desc" }],
     });
   },
   async listPage(userId: string, page: number, pageSize: number) {
     const skip = (page - 1) * pageSize;
+    const where = { OR: [{ userId }, { isPublic: true }] };
     const [items, total] = await prisma.$transaction([
       prisma.survey.findMany({
-        where: { userId },
+        where,
         include: includeSurveyRelations,
-        orderBy: { updatedAt: "desc" },
+        orderBy: [{ isPublic: "desc" }, { updatedAt: "desc" }],
         skip,
         take: pageSize,
       }),
-      prisma.survey.count({ where: { userId } }),
+      prisma.survey.count({ where }),
     ]);
     return { items, total };
   },
@@ -103,7 +104,7 @@ export const surveyRepository = {
     const [items, total] = await prisma.$transaction([
       prisma.survey.findMany({
         include: includeSurveyRelations,
-        orderBy: { updatedAt: "desc" },
+        orderBy: [{ isPublic: "desc" }, { updatedAt: "desc" }],
         skip,
         take: pageSize,
       }),
@@ -142,6 +143,7 @@ export const surveyRepository = {
           respondentInstructions: input.schema.survey.respondentInstructions,
           language: input.schema.survey.language,
           schema: toJson(input.schema),
+          isPublic: false,
         },
       });
 
@@ -181,6 +183,13 @@ export const surveyRepository = {
       await tx.surveyQuestion.deleteMany({ where: { surveyId: id } });
       await tx.surveySection.deleteMany({ where: { surveyId: id } });
       return tx.survey.deleteMany({ where: { userId, id } });
+    });
+  },
+  setPublic(id: string, isPublic: boolean) {
+    return prisma.survey.update({
+      where: { id },
+      data: { isPublic },
+      include: includeSurveyRelations,
     });
   },
 };

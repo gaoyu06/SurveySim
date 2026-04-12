@@ -19,28 +19,29 @@ function serializeTemplateDimensions(input: ParticipantTemplateInput) {
 export const participantTemplateRepository = {
   list(userId: string) {
     return prisma.participantTemplate.findMany({
-      where: { userId },
+      where: { OR: [{ userId }, { isPublic: true }] },
       include: includeTemplateRelations,
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ isPublic: "desc" }, { updatedAt: "desc" }],
     });
   },
   listAll() {
     return prisma.participantTemplate.findMany({
       include: includeTemplateRelations,
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ isPublic: "desc" }, { updatedAt: "desc" }],
     });
   },
   async listPage(userId: string, page: number, pageSize: number) {
     const skip = (page - 1) * pageSize;
+    const where = { OR: [{ userId }, { isPublic: true }] };
     const [items, total] = await prisma.$transaction([
       prisma.participantTemplate.findMany({
-        where: { userId },
+        where,
         include: includeTemplateRelations,
-        orderBy: { updatedAt: "desc" },
+        orderBy: [{ isPublic: "desc" }, { updatedAt: "desc" }],
         skip,
         take: pageSize,
       }),
-      prisma.participantTemplate.count({ where: { userId } }),
+      prisma.participantTemplate.count({ where }),
     ]);
     return { items, total };
   },
@@ -49,7 +50,7 @@ export const participantTemplateRepository = {
     const [items, total] = await prisma.$transaction([
       prisma.participantTemplate.findMany({
         include: includeTemplateRelations,
-        orderBy: { updatedAt: "desc" },
+        orderBy: [{ isPublic: "desc" }, { updatedAt: "desc" }],
         skip,
         take: pageSize,
       }),
@@ -77,6 +78,7 @@ export const participantTemplateRepository = {
         description: input.description,
         dimensions: toJson(serializeTemplateDimensions(input)),
         sampleSizePreview: input.sampleSizePreview,
+        isPublic: false,
         rules: {
           create: rules.map((rule) => ({
             name: rule.name,
@@ -129,6 +131,13 @@ export const participantTemplateRepository = {
     return prisma.$transaction(async (tx) => {
       await tx.participantRule.deleteMany({ where: { templateId: id } });
       return tx.participantTemplate.deleteMany({ where: { userId, id } });
+    });
+  },
+  setPublic(id: string, isPublic: boolean) {
+    return prisma.participantTemplate.update({
+      where: { id },
+      data: { isPublic },
+      include: includeTemplateRelations,
     });
   },
 };

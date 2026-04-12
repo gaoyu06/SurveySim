@@ -1,4 +1,4 @@
-import { DatabaseOutlined, ExperimentOutlined, FileTextOutlined, MenuOutlined, RadarChartOutlined, SettingOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
+import { DatabaseOutlined, ExperimentOutlined, FileTextOutlined, GlobalOutlined, MenuOutlined, RadarChartOutlined, SettingOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { Button, Drawer, Grid, Layout, Menu, Select, Space, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -34,6 +34,7 @@ export function AppShell() {
         label: t("nav.groupWork"),
         children: [
           { key: "/", icon: <RadarChartOutlined />, label: t("nav.dashboard") },
+          { key: "/translation", icon: <GlobalOutlined />, label: t("nav.translation") },
           { key: "/content-tasks", icon: <FileTextOutlined />, label: t("nav.surveys") },
           { key: "/mock-runs", icon: <ExperimentOutlined />, label: t("nav.mockRuns") },
           { key: "/reports", icon: <DatabaseOutlined />, label: t("nav.reports") },
