@@ -74,11 +74,17 @@ export class LlmService {
   }
 
   async getDefaultRuntimeConfig(userId: string): Promise<LlmRuntimeConfig> {
-    const config = await llmConfigRepository.getDefault(userId);
-    if (!config) {
-      throw new Error("No default LLM config found");
+    const ownDefault = await llmConfigRepository.getDefault(userId);
+    if (ownDefault) {
+      return ownDefault;
     }
-    return config;
+
+    const publicFallback = await llmConfigRepository.getPublicDefaultOrAny();
+    if (publicFallback) {
+      return publicFallback;
+    }
+
+    throw new Error("No default LLM config found");
   }
 
   async create(userId: string, input: unknown) {

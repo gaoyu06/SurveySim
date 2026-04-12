@@ -60,6 +60,13 @@ export const llmConfigRepository = {
   getDefault(userId: string) {
     return prisma.llmProviderConfig.findFirst({ where: { userId, isDefault: true }, include: { user: true } });
   },
+  getPublicDefaultOrAny() {
+    return prisma.llmProviderConfig.findFirst({
+      where: { isPublic: true },
+      include: { user: true },
+      orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+    });
+  },
   setPublic(id: string, isPublic: boolean) {
     return prisma.llmProviderConfig.update({ where: { id }, data: { isPublic }, include: { user: true } });
   },
